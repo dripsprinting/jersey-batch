@@ -1,0 +1,362 @@
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Header } from "@/components/Header";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  Search, Download, LogOut, Filter, RefreshCw, 
+  Package, Clock, Truck, CheckCircle2 
+} from "lucide-react";
+import { motion } from "framer-motion";
+import type { User, Session } from "@supabase/supabase-js";
+
+interface OrderWithCustomer {
+  id: string;
+  player_name: string;
+  jersey_number: string;
+  size: string;
+  style: string;
+  status: string;
+  created_at: string;
+  customers: {
+    team_name: string;
+    contact_email: string | null;
+  } | null;
+}
+
+const STATUS_OPTIONS = ["pending", "in_production", "shipped", "completed"] as const;
+
+const STATUS_CONFIG = {
+  pending: { label: "Pending", icon: Clock, color: "status-pending" },
+  in_production: { label: "In Production", icon: Package, color: "status-in_production" },
+  shipped: { label: "Shipped", icon: Truck, color: "status-shipped" },
+  completed: { label: "Completed", icon: CheckCircle2, color: "status-completed" },
+};
+
+export default function Admin() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [orders, setOrders] = useState<OrderWithCustomer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (!session?.user) {
+        navigate("/auth");
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (!session?.user) {
+        navigate("/auth");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const fetchOrders = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(`
+          id,
+          player_name,
+          jersey_number,
+          size,
+          style,
+          status,
+          created_at,
+          customers (
+            team_name,
+            contact_email
+          )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setOrders((data as OrderWithCustomer[]) || []);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load orders",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchOrders();
+    }
+  }, [user]);
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const matchesSearch =
+        searchQuery === "" ||
+        order.player_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.jersey_number.includes(searchQuery) ||
+        order.customers?.team_name.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [orders, searchQuery, statusFilter]);
+
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: newStatus as "pending" | "in_production" | "shipped" | "completed" })
+        .eq("id", orderId);
+
+      if (error) throw error;
+
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId ? { ...order, status: newStatus } : order
+        )
+      );
+
+      toast({
+        title: "Status Updated",
+        description: `Order status changed to ${STATUS_CONFIG[newStatus as keyof typeof STATUS_CONFIG]?.label || newStatus}`,
+      });
+    } catch (error) {
+      console.error("Error updating status:", error);
+      toast({
+        title: "Update Failed",
+        description: "Could not update order status",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const exportToCSV = () => {
+    const headers = ["Team Name", "Player Name", "Number", "Size", "Style", "Status", "Date"];
+    const rows = filteredOrders.map((order) => [
+      order.customers?.team_name || "",
+      order.player_name,
+      order.jersey_number,
+      order.size,
+      order.style,
+      order.status,
+      new Date(order.created_at).toLocaleDateString(),
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `jersey-orders-${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+
+    toast({
+      title: "Export Complete",
+      description: `Exported ${filteredOrders.length} orders to CSV`,
+    });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/auth");
+  };
+
+  const stats = useMemo(() => {
+    return {
+      total: orders.length,
+      pending: orders.filter((o) => o.status === "pending").length,
+      inProduction: orders.filter((o) => o.status === "in_production").length,
+      completed: orders.filter((o) => o.status === "completed").length,
+    };
+  }, [orders]);
+
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+
+      <main className="container py-8">
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-4 mb-8">
+          {[
+            { label: "Total Orders", value: stats.total, icon: Package, color: "text-foreground" },
+            { label: "Pending", value: stats.pending, icon: Clock, color: "text-warning" },
+            { label: "In Production", value: stats.inProduction, icon: Package, color: "text-primary" },
+            { label: "Completed", value: stats.completed, icon: CheckCircle2, color: "text-success" },
+          ].map((stat, index) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{stat.label}</p>
+                      <p className={`text-3xl font-bold ${stat.color}`}>{stat.value}</p>
+                    </div>
+                    <stat.icon className={`h-8 w-8 ${stat.color} opacity-50`} />
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Orders Table */}
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle>Order Management</CardTitle>
+                <CardDescription>View and manage all jersey orders</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" onClick={fetchOrders}>
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+                </Button>
+                <Button variant="outline" onClick={exportToCSV}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSV
+                </Button>
+                <Button variant="ghost" onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Logout
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by team, player, or number..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <Filter className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {STATUS_OPTIONS.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {STATUS_CONFIG[status].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Table */}
+            <div className="rounded-lg border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Player</TableHead>
+                    <TableHead className="text-center">Number</TableHead>
+                    <TableHead className="text-center">Size</TableHead>
+                    <TableHead className="text-center">Style</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-12">
+                        <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredOrders.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                        No orders found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredOrders.map((order) => {
+                      const statusConfig = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
+                      return (
+                        <TableRow key={order.id}>
+                          <TableCell className="font-medium">
+                            {order.customers?.team_name || "Unknown"}
+                          </TableCell>
+                          <TableCell>{order.player_name}</TableCell>
+                          <TableCell className="text-center font-mono font-bold">
+                            {order.jersey_number}
+                          </TableCell>
+                          <TableCell className="text-center">{order.size}</TableCell>
+                          <TableCell className="text-center capitalize">{order.style}</TableCell>
+                          <TableCell>
+                            <Badge className={`status-badge ${statusConfig?.color || ""}`}>
+                              {statusConfig?.label || order.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {new Date(order.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={order.status}
+                              onValueChange={(value) => updateOrderStatus(order.id, value)}
+                            >
+                              <SelectTrigger className="w-36 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {STATUS_OPTIONS.map((status) => (
+                                  <SelectItem key={status} value={status}>
+                                    {STATUS_CONFIG[status].label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+}
