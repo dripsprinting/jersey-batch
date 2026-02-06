@@ -149,12 +149,7 @@ const Order = () => {
             .upload(fileName, customerData.design);
 
           if (uploadError) throw uploadError;
-
-          const { data: { publicUrl } } = supabase.storage
-            .from('designs')
-            .getPublicUrl(fileName);
-          
-          designUrl = publicUrl;
+          designUrl = fileName;
         }
 
         // Create or find customer (for simplicity we create a new entry per batch)

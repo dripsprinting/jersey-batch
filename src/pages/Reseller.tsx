@@ -96,10 +96,10 @@ export default function Reseller() {
       if (error) throw error;
       setOrders((data as any) || []);
     } catch (error: any) {
-      console.error("Error fetching orders:", error);
+      console.error("Error fetching orders detail:", error);
       toast({
         title: "Error",
-        description: "Failed to load your orders",
+        description: error.message || "Failed to load your orders",
         variant: "destructive",
       });
     } finally {
