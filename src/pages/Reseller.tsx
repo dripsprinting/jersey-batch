@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Search, LogOut, Filter, RefreshCw, 
   Package, Clock, Truck, CheckCircle2, Phone, Facebook,
-  LayoutDashboard, Receipt, ChevronRight, Plus
+  LayoutDashboard, Receipt, ChevronRight, Plus, User
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { User } from "@supabase/supabase-js";
@@ -50,6 +50,7 @@ export default function Reseller() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [teamFilter, setTeamFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"orders" | "transactions">("orders");
 
   useEffect(() => {
@@ -111,6 +112,14 @@ export default function Reseller() {
     if (user) fetchOrders();
   }, [user]);
 
+  const uniqueTeams = useMemo(() => {
+    const teams = new Set<string>();
+    orders.forEach((o) => {
+      if (o.customers?.team_name) teams.add(o.customers.team_name);
+    });
+    return Array.from(teams).sort();
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       const matchesSearch =
@@ -119,9 +128,11 @@ export default function Reseller() {
         order.customers?.team_name?.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesTeam = teamFilter === "all" || order.customers?.team_name === teamFilter;
+
+      return matchesSearch && matchesStatus && matchesTeam;
     });
-  }, [orders, searchQuery, statusFilter]);
+  }, [orders, searchQuery, statusFilter, teamFilter]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -228,10 +239,25 @@ export default function Reseller() {
                           <SelectValue placeholder="Status" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All Items</SelectItem>
+                          <SelectItem value="all">All Status</SelectItem>
                           {Object.keys(STATUS_CONFIG).map((s) => (
                             <SelectItem key={s} value={s}>
                               {STATUS_CONFIG[s as keyof typeof STATUS_CONFIG].label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={teamFilter} onValueChange={setTeamFilter}>
+                        <SelectTrigger className="w-full sm:w-64">
+                          <User className="mr-2 h-4 w-4" />
+                          <SelectValue placeholder="All Customers" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Customers</SelectItem>
+                          {uniqueTeams.map((team) => (
+                            <SelectItem key={team} value={team}>
+                              {team}
                             </SelectItem>
                           ))}
                         </SelectContent>
