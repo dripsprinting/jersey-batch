@@ -22,6 +22,7 @@ export type Database = {
           design_url: string | null
           fb_link: string | null
           id: string
+          reseller_id: string | null
           team_name: string
         }
         Insert: {
@@ -31,6 +32,7 @@ export type Database = {
           design_url?: string | null
           fb_link?: string | null
           id?: string
+          reseller_id?: string | null
           team_name: string
         }
         Update: {
@@ -40,6 +42,7 @@ export type Database = {
           design_url?: string | null
           fb_link?: string | null
           id?: string
+          reseller_id?: string | null
           team_name?: string
         }
         Relationships: []
@@ -96,6 +99,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
