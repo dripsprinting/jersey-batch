@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { logger } from "@/lib/logger";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,6 @@ import {
   Package, Clock, Truck, CheckCircle2, Phone, Facebook
 } from "lucide-react";
 import { motion } from "framer-motion";
-import type { User, Session } from "@supabase/supabase-js";
 
 interface OrderWithCustomer {
   id: string;
@@ -32,6 +32,7 @@ interface OrderWithCustomer {
     contact_phone: string | null;
     design_url: string | null;
   } | null;
+  _designSignedUrl?: string | null;
 }
 
 const STATUS_OPTIONS = ["pending", "in_production", "shipped", "completed"] as const;
@@ -43,37 +44,46 @@ const STATUS_CONFIG = {
   completed: { label: "Completed", icon: CheckCircle2, color: "status-completed" },
 };
 
+/**
+ * Extracts the storage file path from a design URL.
+ * Handles both full public URLs and plain file paths.
+ */
+function extractFilePath(designUrl: string): string {
+  // If it's a full Supabase storage URL, extract the path after /designs/
+  const match = designUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/designs\/(.+)/);
+  if (match) return match[1];
+  // Otherwise assume it's already a file path
+  return designUrl;
+}
+
 export default function Admin() {
-  const navigate = useNavigate();
+  const { user, isAdmin, isLoading: authLoading } = useAdminAuth();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [orders, setOrders] = useState<OrderWithCustomer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        navigate("/auth");
-      }
-    });
+  const generateSignedUrls = useCallback(async (ordersData: OrderWithCustomer[]) => {
+    const updated = await Promise.all(
+      ordersData.map(async (order) => {
+        if (!order.customers?.design_url) return order;
+        try {
+          const filePath = extractFilePath(order.customers.design_url);
+          const { data, error } = await supabase.storage
+            .from("designs")
+            .createSignedUrl(filePath, 3600); // 1 hour expiry
+          if (error) throw error;
+          return { ...order, _designSignedUrl: data.signedUrl };
+        } catch {
+          return { ...order, _designSignedUrl: null };
+        }
+      })
+    );
+    return updated;
+  }, []);
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        navigate("/auth");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
@@ -98,9 +108,11 @@ export default function Admin() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setOrders((data as unknown as OrderWithCustomer[]) || []);
+      const rawOrders = (data as unknown as OrderWithCustomer[]) || [];
+      const ordersWithUrls = await generateSignedUrls(rawOrders);
+      setOrders(ordersWithUrls);
     } catch (error) {
-      console.error("Error fetching orders:", error);
+      logger.error("Error fetching orders:", error);
       toast({
         title: "Error",
         description: "Failed to load orders",
@@ -109,20 +121,20 @@ export default function Admin() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [generateSignedUrls, toast]);
 
   useEffect(() => {
-    if (user) {
+    if (user && isAdmin) {
       fetchOrders();
     }
-  }, [user]);
+  }, [user, isAdmin, fetchOrders]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       const matchesSearch =
         searchQuery === "" ||
-        order.player_name_back.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (order.player_name_front?.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        order.player_name_back?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.player_name_front?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         order.jersey_number.includes(searchQuery) ||
         order.customers?.team_name.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -152,7 +164,7 @@ export default function Admin() {
         description: `Order status changed to ${STATUS_CONFIG[newStatus as keyof typeof STATUS_CONFIG]?.label || newStatus}`,
       });
     } catch (error) {
-      console.error("Error updating status:", error);
+      logger.error("Error updating status:", error);
       toast({
         title: "Update Failed",
         description: "Could not update order status",
@@ -189,7 +201,6 @@ export default function Admin() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    navigate("/auth");
   };
 
   const stats = useMemo(() => {
@@ -201,7 +212,8 @@ export default function Admin() {
     };
   }, [orders]);
 
-  if (!user) {
+  // Show nothing while checking auth/admin role
+  if (authLoading || !user || !isAdmin) {
     return null;
   }
 
@@ -311,19 +323,20 @@ export default function Admin() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12">
+                      <TableCell colSpan={11} className="text-center py-12">
                         <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                       </TableCell>
                     </TableRow>
                   ) : filteredOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                         No orders found
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredOrders.map((order) => {
                       const statusConfig = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
+                      const designUrl = order._designSignedUrl;
                       return (
                         <TableRow key={order.id}>
                           <TableCell className="font-medium">
@@ -344,16 +357,16 @@ export default function Admin() {
                             </div>
                           </TableCell>
                           <TableCell className="text-center">
-                            {order.customers?.design_url ? (
+                            {designUrl ? (
                               <a 
-                                href={order.customers.design_url} 
+                                href={designUrl} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="inline-block"
                               >
                                 <div className="h-10 w-10 rounded overflow-hidden border bg-muted flex items-center justify-center hover:opacity-80 transition-opacity">
                                   <img 
-                                    src={order.customers.design_url} 
+                                    src={designUrl} 
                                     alt="Design" 
                                     className="h-full w-full object-cover"
                                   />
