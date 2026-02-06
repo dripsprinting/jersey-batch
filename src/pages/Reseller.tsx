@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -28,11 +28,12 @@ import {
   Search, LogOut, Filter, RefreshCw, 
   Package, Clock, Truck, CheckCircle2, 
   LayoutDashboard, Receipt, ChevronRight, Plus, User as UserIcon,
-  Users, BookOpen, Settings, ShoppingCart, Upload, ImageIcon, BadgeDollarSign, Trash2
+  Users, BookOpen, Settings, ShoppingCart, Upload, ImageIcon, BadgeDollarSign, Trash2,
+  Phone, MessageCircle, Tag
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { User } from "@supabase/supabase-js";
-import { calculatePrice } from "@/lib/pricing";
+import { calculatePrice, getPriceDetails } from "@/lib/pricing";
 
 interface OrderWithCustomer {
   id: string;
@@ -46,6 +47,7 @@ interface OrderWithCustomer {
   status: string;
   created_at: string;
   price?: number;
+  _designSignedUrl?: string | null;
   customers: {
     id: string;
     team_name: string;
@@ -54,6 +56,15 @@ interface OrderWithCustomer {
     design_url: string | null;
     reseller_id: string | null;
   } | null;
+}
+
+function extractFilePath(designUrl: string): string {
+  if (!designUrl) return "";
+  // If it's a full Supabase storage URL, extract the path after /designs/
+  const match = /\/storage\/v1\/object\/(?:public|sign)\/designs\/(.+)/.exec(designUrl);
+  if (match) return match[1];
+  // Otherwise assume it's already a file path
+  return designUrl;
 }
 
 const STATUS_CONFIG = {
@@ -273,13 +284,43 @@ export default function Reseller() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  const generateSignedUrls = useCallback(async (ordersData: OrderWithCustomer[]) => {
+    const updated = await Promise.all(
+      ordersData.map(async (order) => {
+        if (!order.customers?.design_url) return order;
+        try {
+          const filePath = extractFilePath(order.customers.design_url);
+          const { data, error } = await supabase.storage
+            .from("designs")
+            .createSignedUrl(filePath, 3600); // 1 hour expiry
+          if (error) throw error;
+          return { ...order, _designSignedUrl: data.signedUrl };
+        } catch {
+          return { ...order, _designSignedUrl: null };
+        }
+      })
+    );
+    return updated;
+  }, []);
+
   const fetchOrders = async () => {
     if (!user) return;
     setIsLoading(true);
     try {
       // Refresh customer and transaction data as well
       const { data: customersData } = await supabase.from("customers").select("*, due_date").eq("reseller_id", user.id).order("team_name");
-      setCustomers(customersData || []);
+      
+      const customersWithUrls = await Promise.all((customersData || []).map(async (c) => {
+        if (!c.design_url) return c;
+        try {
+          const filePath = extractFilePath(c.design_url);
+          const { data } = await supabase.storage.from("designs").createSignedUrl(filePath, 3600);
+          return { ...c, _designSignedUrl: data?.signedUrl };
+        } catch {
+          return c;
+        }
+      }));
+      setCustomers(customersWithUrls);
       
       const { data: txData } = await supabase
         .from("transactions")
@@ -315,7 +356,9 @@ export default function Reseller() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setOrders((data as any) || []);
+      
+      const ordersWithUrls = await generateSignedUrls((data as any) || []);
+      setOrders(ordersWithUrls);
     } catch (error: any) {
       console.error("Error fetching orders detail:", error);
       toast({
@@ -579,37 +622,88 @@ export default function Reseller() {
                       </Select>
                     </div>
 
-                    <div className="rounded-lg border overflow-hidden">
+                    <div className="rounded-lg border overflow-hidden overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-muted/50">
-                            <TableHead>Customer</TableHead>
-                            <TableHead>Player</TableHead>
-                            <TableHead>Product</TableHead>
+                            <TableHead className="w-[180px]">Customer</TableHead>
+                            <TableHead className="text-center">Design</TableHead>
+                            <TableHead>Player Details</TableHead>
+                            <TableHead>Jersey Info</TableHead>
+                            <TableHead>Amount</TableHead>
                             <TableHead>Status</TableHead>
-                            <TableHead>Date</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {isLoading ? (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center py-12">
-                                <RefreshCw className="h-6 w-6 animate-spin mx-auto text-primary" />
+                              <TableCell colSpan={7} className="text-center py-24">
+                                <div className="flex flex-col items-center gap-2">
+                                  <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+                                  <p className="text-sm text-muted-foreground font-medium">Loading orders...</p>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ) : filteredOrders.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                                No orders found.
+                              <TableCell colSpan={7} className="text-center py-24 text-muted-foreground">
+                                <div className="flex flex-col items-center gap-2">
+                                  <Package className="h-12 w-12 opacity-20" />
+                                  <p className="text-lg font-medium">No results found</p>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ) : (
                             filteredOrders.map((order) => {
                               const config = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
+                              const designUrl = order._designSignedUrl;
                               return (
-                                <TableRow key={order.id}>
-                                  <TableCell className="font-bold">{order.customers?.team_name}</TableCell>
+                                <TableRow key={order.id} className="hover:bg-muted/30 transition-colors group">
+                                  <TableCell>
+                                    <div className="space-y-1">
+                                      <p className="font-bold text-foreground truncate">{order.customers?.team_name || "Unknown Customer"}</p>
+                                      <div className="flex flex-col text-[11px] text-muted-foreground mt-1">
+                                        {order.customers?.contact_phone && (
+                                          <span className="flex items-center gap-1">
+                                            <Phone className="h-3 w-3" /> {order.customers.contact_phone}
+                                          </span>
+                                        )}
+                                        {order.customers?.fb_link && (
+                                          <a 
+                                            href={order.customers.fb_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 text-primary hover:underline"
+                                          >
+                                            <MessageCircle className="h-3 w-3" /> Profile
+                                          </a>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    {designUrl ? (
+                                      <a 
+                                        href={designUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="inline-block group"
+                                      >
+                                        <div className="h-12 w-12 rounded-lg overflow-hidden border-2 border-muted bg-white flex items-center justify-center transition-all group-hover:scale-110 group-hover:border-primary shadow-sm">
+                                          <img 
+                                            src={designUrl} 
+                                            alt="Design" 
+                                            className="h-full w-full object-cover"
+                                          />
+                                        </div>
+                                      </a>
+                                    ) : (
+                                      <div className="h-12 w-12 rounded-lg border border-dashed flex items-center justify-center text-[10px] text-muted-foreground text-center bg-muted/20 mx-auto">
+                                        N/A
+                                      </div>
+                                    )}
+                                  </TableCell>
                                   <TableCell>
                                     <div className="flex flex-col">
                                       <span className="font-bold text-primary text-base leading-tight">{order.player_name_back}</span>
@@ -621,19 +715,32 @@ export default function Reseller() {
                                       <span className="text-xs mt-1 font-mono text-muted-foreground">#{order.jersey_number}</span>
                                     </div>
                                   </TableCell>
-                                  <TableCell className="text-sm">
-                                    <div className="flex flex-col">
-                                      <span>{order.product_type}</span>
-                                      <span className="text-[10px] text-muted-foreground uppercase font-bold">{order.item_type || "Set"}</span>
+                                  <TableCell>
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-semibold truncate max-w-[120px]">{order.product_type}</p>
+                                      <div className="flex gap-1 flex-wrap items-center">
+                                        <Badge variant="secondary" className="text-[10px] px-1 h-5">{order.item_type || "Set"}</Badge>
+                                        <Badge variant="outline" className="text-[10px] px-1 h-5">{order.size}</Badge>
+                                        <Badge variant="outline" className="text-[10px] px-1 h-5 capitalize">{order.style}</Badge>
+                                      </div>
+                                      <div className="flex items-center gap-1 mt-1 opacity-70">
+                                        <Tag className="h-2 w-2 text-primary" />
+                                        <span className="text-[8px] uppercase font-bold text-primary tracking-tighter">
+                                          {getPriceDetails(order.product_type, (order.item_type || "Set") as any, order.size).category}
+                                        </span>
+                                      </div>
                                     </div>
                                   </TableCell>
+                                  <TableCell className="font-mono text-xs text-primary font-bold">
+                                    ₱{(order.price || calculatePrice(order.product_type, (order.item_type || "Set") as any, order.size)).toLocaleString()}
+                                  </TableCell>
                                   <TableCell>
-                                    <Badge className={`${config?.color || "bg-gray-500"} text-white border-none`}>
+                                    <Badge className={`${config?.color || "bg-gray-500"} text-white border-none text-[11px]`}>
                                       {config?.label || order.status}
                                     </Badge>
-                                  </TableCell>
-                                  <TableCell className="text-muted-foreground text-sm">
-                                    {new Date(order.created_at).toLocaleDateString()}
+                                    <p className="text-[10px] text-muted-foreground mt-1">
+                                      {new Date(order.created_at).toLocaleDateString()}
+                                    </p>
                                   </TableCell>
                                   <TableCell className="text-right">
                                     {order.status === "pending" && (
@@ -722,9 +829,20 @@ export default function Reseller() {
                           }}
                         >
                           <CardHeader className="pb-2">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <CardTitle className="text-lg font-bold uppercase group-hover:text-primary transition-colors">{customer.team_name}</CardTitle>
+                            <div className="flex justify-between items-start gap-4">
+                              <div className="h-14 w-14 shrink-0 rounded-lg overflow-hidden border-2 border-muted bg-white flex items-center justify-center shadow-sm">
+                                {customer._designSignedUrl ? (
+                                  <img 
+                                    src={customer._designSignedUrl} 
+                                    alt="Design" 
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="text-[10px] text-muted-foreground text-center px-1">No Design</div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <CardTitle className="text-lg font-bold uppercase group-hover:text-primary transition-colors truncate">{customer.team_name}</CardTitle>
                                 <div className="flex flex-col">
                                   <CardDescription>Since {new Date(customer.created_at).toLocaleDateString()}</CardDescription>
                                   {customer.due_date && (
@@ -734,7 +852,7 @@ export default function Reseller() {
                                   )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1 shrink-0">
                                 <Button
                                   variant="ghost"
                                   size="icon"
