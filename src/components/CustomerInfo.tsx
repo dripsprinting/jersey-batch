@@ -6,11 +6,11 @@ import { Button } from "./ui/button";
 import { useRef } from "react";
 
 interface CustomerInfoProps {
-  teamName: string;
+  customerName: string;
   fbLink: string;
   phone: string;
   designFile: File | null;
-  onTeamNameChange: (value: string) => void;
+  onCustomerNameChange: (value: string) => void;
   onFbLinkChange: (value: string) => void;
   onPhoneChange: (value: string) => void;
   onDesignFileChange: (file: File | null) => void;
@@ -18,11 +18,11 @@ interface CustomerInfoProps {
 }
 
 export function CustomerInfo({
-  teamName,
+  customerName,
   fbLink,
   phone,
   designFile,
-  onTeamNameChange,
+  onCustomerNameChange,
   onFbLinkChange,
   onPhoneChange,
   onDesignFileChange,
@@ -48,7 +48,7 @@ export function CustomerInfo({
               Details apply to the next items you add
             </CardDescription>
           </div>
-          {(teamName || fbLink || phone || designFile) && (
+          {(customerName || fbLink || phone || designFile) && (
             <Button 
               variant="outline" 
               size="sm" 
@@ -67,14 +67,14 @@ export function CustomerInfo({
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-4">
           <div className="space-y-2">
-            <Label htmlFor="teamName" className="flex items-center gap-2">
+            <Label htmlFor="customerName" className="flex items-center gap-2">
               <Users className="h-4 w-4 text-muted-foreground" />
-              Team / Customer Name
+              Customer Name
             </Label>
             <Input
-              id="teamName"
-              value={teamName}
-              onChange={(e) => onTeamNameChange(e.target.value)}
+              id="customerName"
+              value={customerName}
+              onChange={(e) => onCustomerNameChange(e.target.value)}
               placeholder="Enter name"
               className="h-11"
               required
@@ -124,10 +124,12 @@ export function CustomerInfo({
                 type="button"
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
-                className={`w-full h-11 justify-start gap-2 font-normal ${!designFile ? 'text-muted-foreground' : 'text-foreground'}`}
+                className={`w-full h-11 justify-start gap-2 font-normal overflow-hidden ${!designFile ? 'text-muted-foreground' : 'text-foreground'}`}
               >
-                <Upload className="h-4 w-4" />
-                {designFile ? designFile.name : "Upload Design"}
+                <Upload className="h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  {designFile ? designFile.name : "Upload Design"}
+                </span>
               </Button>
             </div>
           </div>

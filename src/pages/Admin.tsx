@@ -11,10 +11,28 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Search, Download, LogOut, Filter, RefreshCw, 
-  Package, Clock, Truck, CheckCircle2, Phone, Facebook,
-  LayoutDashboard, Receipt, ChevronRight, Menu, CheckSquare
+  Package, Clock, Truck, CheckCircle2, Phone, MessageCircle,
+  LayoutDashboard, Receipt, ChevronRight, Menu, CheckSquare,
+  Users, Layers, Settings, Plus, Trash2, Edit, ShoppingCart, Tag, BadgeDollarSign
 } from "lucide-react";
+import { 
+  Dialog, DialogContent, DialogHeader, 
+  DialogTitle, DialogTrigger, DialogFooter 
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
+import { OrderPage } from "@/components/OrderPage";
+import { getPriceDetails, calculatePrice } from "@/lib/pricing";
 
 interface OrderWithCustomer {
   id: string;
@@ -22,11 +40,14 @@ interface OrderWithCustomer {
   player_name_back: string;
   jersey_number: string;
   product_type: string;
+  item_type?: string;
   size: string;
   style: string;
   status: string;
   created_at: string;
+  price?: number;
   customers: {
+    id: string;
     team_name: string;
     fb_link: string | null;
     contact_phone: string | null;
@@ -54,7 +75,7 @@ const STATUS_CONFIG = {
  */
 function extractFilePath(designUrl: string): string {
   // If it's a full Supabase storage URL, extract the path after /designs/
-  const match = designUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/designs\/(.+)/);
+  const match = /\/storage\/v1\/object\/(?:public|sign)\/designs\/(.+)/.exec(designUrl);
   if (match) return match[1];
   // Otherwise assume it's already a file path
   return designUrl;
@@ -64,12 +85,48 @@ export default function Admin() {
   const { user, isAdmin, isLoading: authLoading } = useAdminAuth();
   const { toast } = useToast();
   const [orders, setOrders] = useState<OrderWithCustomer[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [styles, setStyles] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [teamFilter, setTeamFilter] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"orders" | "transactions" | "confirmations">("orders");
+  const [customerFilter, setCustomerFilter] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<"orders" | "confirmations" | "transactions" | "customers" | "inventory" | "settings" | "new_order">("orders");
   const isSidebarOpen = true; // Changed to constant as toggle logic wasn't fully utilized
+  const [newStyle, setNewStyle] = useState({ name: "", description: "", image_url: "" });
+  const [isStyleDialogOpen, setIsStyleDialogOpen] = useState(false);
+  const [styleToDelete, setStyleToDelete] = useState<string | null>(null);
+
+  const addStyle = async () => {
+    if (!newStyle.name) return;
+    try {
+      const { data, error } = await supabase
+        .from("styles")
+        .insert([newStyle])
+        .select();
+      if (error) throw error;
+      setStyles(prev => [...(data || []), ...prev]);
+      setNewStyle({ name: "", description: "", image_url: "" });
+      setIsStyleDialogOpen(false);
+      toast({ title: "Style added successfully" });
+    } catch (error: any) {
+      toast({ title: "Failed to add style", variant: "destructive" });
+    }
+  };
+
+  const deleteStyle = async (id: string) => {
+    try {
+      const { error } = await supabase.from("styles").delete().eq("id", id);
+      if (error) throw error;
+      setStyles(prev => prev.filter(s => s.id !== id));
+      toast({ title: "Style removed" });
+    } catch (error: any) {
+      toast({ title: "Removal failed", variant: "destructive" });
+    } finally {
+      setStyleToDelete(null);
+    }
+  };
 
   const generateSignedUrls = useCallback(async (ordersData: OrderWithCustomer[]) => {
     const updated = await Promise.all(
@@ -90,9 +147,88 @@ export default function Admin() {
     return updated;
   }, []);
 
+  const fetchTransactions = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(`
+          *,
+          customer:customers!customer_id (
+            team_name,
+            reseller:profiles!reseller_id (email)
+          )
+        `)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      
+      // Generate signed URLs for transaction proofs
+      const txWithUrls = await Promise.all((data || []).map(async (tx) => {
+        if (!tx.proof_url) return tx;
+        try {
+          const filePath = extractFilePath(tx.proof_url);
+          const { data: signData } = await supabase.storage.from("designs").createSignedUrl(filePath, 3600);
+          return { ...tx, _proofSignedUrl: signData?.signedUrl };
+        } catch {
+          return tx;
+        }
+      }));
+
+      setTransactions(txWithUrls);
+    } catch (error: any) {
+      logger.error("Error fetching transactions:", error);
+    }
+  }, []);
+
+  const verifyTransaction = async (id: string, status: 'verified' | 'rejected') => {
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ status })
+        .eq("id", id);
+      if (error) throw error;
+      setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, status } : tx));
+      toast({ title: `Transaction ${status}` });
+    } catch (error: any) {
+      toast({ title: "Update failed", variant: "destructive" });
+    }
+  };
+
+  const fetchStyles = useCallback(async () => {
+    try {
+      await fetchTransactions();
+      const { data, error } = await supabase.from("styles").select("*").order("name");
+      if (error) throw error;
+      setStyles(data || []);
+    } catch (error: any) {
+      logger.error("Error fetching styles:", error);
+    }
+  }, []);
+
+  const fetchCustomers = useCallback(async () => {
+    try {
+      await fetchStyles();
+      const { data, error } = await supabase
+        .from("customers")
+        .select(`
+          *,
+          reseller:profiles!reseller_id (
+            email,
+            role
+          )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setCustomers(data || []);
+    } catch (error: any) {
+      logger.error("Error fetching customers:", error);
+    }
+  }, []);
+
   const fetchOrders = useCallback(async () => {
     setIsLoading(true);
     try {
+      await fetchCustomers();
       const { data, error } = await supabase
         .from("orders")
         .select(`
@@ -101,16 +237,17 @@ export default function Admin() {
           player_name_back,
           jersey_number,
           product_type,
+          item_type,
           size,
           style,
           status,
           created_at,
-          customers (
+          customers:customers!customer_id (
             team_name,
             fb_link,
             contact_phone,
             design_url,
-            reseller:profiles (
+            reseller:profiles!reseller_id (
               email,
               role
             )
@@ -150,39 +287,55 @@ export default function Admin() {
         order.customers?.team_name.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-      const matchesTeam = teamFilter === "all" || order.customers?.team_name === teamFilter;
+      const matchesCustomer = customerFilter === "all" || order.customers?.team_name === customerFilter;
 
-      return matchesSearch && matchesStatus && matchesTeam;
+      return matchesSearch && matchesStatus && matchesCustomer;
     });
-  }, [orders, searchQuery, statusFilter, teamFilter]);
+  }, [orders, searchQuery, statusFilter, customerFilter]);
 
-  const uniqueTeams = useMemo(() => {
-    const teams = orders
+  const uniqueCustomers = useMemo(() => {
+    const names = orders
       .map((o) => o.customers?.team_name)
       .filter((name): name is string => !!name);
-    return Array.from(new Set(teams)).sort();
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
   const pendingBatches = useMemo(() => {
     const map = new Map<string, {
-      teamName: string,
+      customerName: string,
       customer: any,
+      designSignedUrl?: string | null,
       orders: OrderWithCustomer[],
-      pendingCount: number
+      pendingCount: number,
+      totalBill: number,
+      totalPaid: number
     }>();
 
     orders.forEach(order => {
-      const team = order.customers?.team_name || "Unknown";
-      if (!map.has(team)) {
-        map.set(team, { 
-          teamName: team, 
+      const name = order.customers?.team_name || "Unknown";
+      if (!map.has(name)) {
+        // Calculate total verified payments for this customer
+        const paid = transactions
+          .filter(tx => tx.customer_id === order.customers?.id && tx.status === 'verified')
+          .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+        map.set(name, { 
+          customerName: name, 
           customer: order.customers, 
+          designSignedUrl: order._designSignedUrl,
           orders: [], 
-          pendingCount: 0 
+          pendingCount: 0,
+          totalBill: 0,
+          totalPaid: paid
         });
       }
-      const data = map.get(team)!;
+      const data = map.get(name)!;
       data.orders.push(order);
+      
+      // Use saved price or calculate on the fly for legacy orders
+      const itemPrice = order.price || calculatePrice(order.product_type, order.item_type || "Set", order.size);
+      data.totalBill += Number(itemPrice);
+
       if (order.status === "pending") {
         data.pendingCount++;
       }
@@ -191,7 +344,7 @@ export default function Admin() {
     return Array.from(map.values())
       .filter(b => b.pendingCount > 0)
       .sort((a, b) => b.pendingCount - a.pendingCount);
-  }, [orders]);
+  }, [orders, transactions]);
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
@@ -296,12 +449,14 @@ export default function Admin() {
   };
 
   const exportToCSV = () => {
-    const headers = ["Team Name", "Name (Front)", "Name (Back)", "Number", "Size", "Style", "Status", "Date"];
+    const headers = ["Customer Name", "Name (Front)", "Name (Back)", "Number", "Product", "Type", "Size", "Style", "Status", "Date"];
     const rows = filteredOrders.map((order) => [
       order.customers?.team_name || "",
       order.player_name_front || "",
       order.player_name_back,
       order.jersey_number,
+      order.product_type,
+      order.item_type || "Set",
       order.size,
       order.style,
       order.status,
@@ -326,13 +481,20 @@ export default function Admin() {
   };
 
   const stats = useMemo(() => {
+    const totalRev = orders.reduce((acc, o) => acc + (o.price || calculatePrice(o.product_type, o.item_type || "Set", o.size)), 0);
+    const totalPaid = transactions
+      .filter(tx => tx.status === 'verified')
+      .reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
+
     return {
       total: orders.length,
       pending: orders.filter((o) => o.status === "pending").length,
       inProduction: orders.filter((o) => o.status === "in_production").length,
       completed: orders.filter((o) => o.status === "completed").length,
+      revenue: totalRev,
+      balance: totalRev - totalPaid
     };
-  }, [orders]);
+  }, [orders, transactions]);
 
   // Show nothing while checking auth/admin role
   if (authLoading || !user || !isAdmin) {
@@ -355,12 +517,12 @@ export default function Admin() {
   );
 
   return (
-    <div className="flex min-h-screen bg-muted/30">
+    <div className="flex h-screen overflow-hidden bg-muted/30">
       {/* Sidebar */}
       <aside 
         className={`${
           isSidebarOpen ? "w-64" : "w-20"
-        } transition-all duration-300 border-r bg-background flex flex-col hidden md:flex`}
+        } h-full transition-all duration-300 border-r bg-background flex flex-col hidden md:flex`}
       >
         <div className="p-6 flex items-center gap-3 border-b">
           <img 
@@ -368,16 +530,20 @@ export default function Admin() {
             alt="Logo" 
             className="h-8 w-8 rounded-lg object-cover bg-white"
           />
-          {isSidebarOpen && <span className="font-bold text-lg tracking-tight">Admin Pane</span>}
+          {isSidebarOpen && <span className="font-bold text-lg tracking-tight">Admin Portal</span>}
         </div>
         
         <nav className="flex-1 p-4 space-y-2">
           <SidebarItem id="orders" label="Dashboard" icon={LayoutDashboard} />
+          <SidebarItem id="new_order" label="New Order" icon={ShoppingCart} />
           <SidebarItem id="confirmations" label="Confirmations" icon={CheckSquare} />
           <SidebarItem id="transactions" label="Transactions" icon={Receipt} />
+          <SidebarItem id="customers" label="Customer List" icon={Users} />
+          <SidebarItem id="inventory" label="Jersey Styles" icon={Layers} />
         </nav>
 
         <div className="p-4 border-t space-y-2">
+          <SidebarItem id="settings" label="Settings" icon={Settings} />
           <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={handleLogout}>
             <LogOut className="mr-3 h-5 w-5" />
             {isSidebarOpen && "Logout"}
@@ -413,22 +579,24 @@ export default function Admin() {
                 className="space-y-6"
               >
                 {/* Stats Cards */}
-                <div className="grid gap-4 md:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
                   {[
                     { label: "Total Orders", value: stats.total, icon: Package, color: "text-foreground" },
                     { label: "Pending", value: stats.pending, icon: Clock, color: "text-amber-500" },
                     { label: "In Production", value: stats.inProduction, icon: Package, color: "text-blue-500" },
                     { label: "Completed", value: stats.completed, icon: CheckCircle2, color: "text-green-500" },
+                    { label: "Total Revenue", value: `₱${stats.revenue.toLocaleString()}`, icon: BadgeDollarSign, color: "text-primary" },
+                    { label: "Collectibles", value: `₱${stats.balance.toLocaleString()}`, icon: Receipt, color: "text-red-500" },
                   ].map((stat) => (
                     <Card key={stat.label}>
-                      <CardContent className="p-6">
+                      <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-                            <p className={`text-2xl font-bold mt-1 ${stat.color}`}>{stat.value}</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{stat.label}</p>
+                            <p className={`text-xl font-black mt-0.5 ${stat.color}`}>{stat.value}</p>
                           </div>
-                          <div className={`p-3 rounded-xl bg-muted ${stat.color}`}>
-                            <stat.icon className="h-6 w-6" />
+                          <div className={`p-2 rounded-lg bg-muted ${stat.color}`}>
+                            <stat.icon className="h-4 w-4" />
                           </div>
                         </div>
                       </CardContent>
@@ -462,7 +630,7 @@ export default function Admin() {
                       <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                          placeholder="Team name, player, or #number..."
+                          placeholder="Customer name, player, or #number..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="pl-10"
@@ -470,16 +638,16 @@ export default function Admin() {
                       </div>
                       
                       <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                        <Select value={teamFilter} onValueChange={setTeamFilter}>
+                        <Select value={customerFilter} onValueChange={setCustomerFilter}>
                           <SelectTrigger className="w-full sm:w-48">
                             <Package className="mr-2 h-4 w-4" />
-                            <SelectValue placeholder="Team/Customer" />
+                            <SelectValue placeholder="All Customers" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All Customers</SelectItem>
-                            {uniqueTeams.map((team) => (
-                              <SelectItem key={team} value={team}>
-                                {team}
+                            {uniqueCustomers.map((name) => (
+                              <SelectItem key={name} value={name}>
+                                {name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -507,10 +675,11 @@ export default function Admin() {
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-muted/50">
-                            <TableHead className="w-[200px]">Customer / Team</TableHead>
+                            <TableHead className="w-[200px]">Customer Name</TableHead>
                             <TableHead className="text-center">Design</TableHead>
                             <TableHead>Player Details</TableHead>
                             <TableHead>Jersey Info</TableHead>
+                            <TableHead>Amount</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
@@ -518,7 +687,7 @@ export default function Admin() {
                         <TableBody>
                           {isLoading ? (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center py-24">
+                              <TableCell colSpan={7} className="text-center py-24">
                                 <div className="flex flex-col items-center gap-2">
                                   <RefreshCw className="h-8 w-8 animate-spin text-primary" />
                                   <p className="text-sm text-muted-foreground font-medium">Loading orders...</p>
@@ -527,7 +696,7 @@ export default function Admin() {
                             </TableRow>
                           ) : filteredOrders.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center py-24 text-muted-foreground">
+                              <TableCell colSpan={7} className="text-center py-24 text-muted-foreground">
                                 <div className="flex flex-col items-center gap-2">
                                   <Package className="h-12 w-12 opacity-20" />
                                   <p className="text-lg font-medium">No results found</p>
@@ -543,7 +712,7 @@ export default function Admin() {
                                 <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
                                   <TableCell>
                                     <div className="space-y-1">
-                                      <p className="font-bold text-foreground truncate">{order.customers?.team_name || "Unknown Team"}</p>
+                                      <p className="font-bold text-foreground truncate">{order.customers?.team_name || "Unknown Customer"}</p>
                                       {order.customers?.reseller && (
                                         <Badge variant="outline" className="text-[10px] py-0 h-4 bg-primary/5 text-primary border-primary/20">
                                           Reseller: {order.customers.reseller.email.split('@')[0]}
@@ -562,7 +731,7 @@ export default function Admin() {
                                             rel="noopener noreferrer"
                                             className="flex items-center gap-1 text-primary hover:underline"
                                           >
-                                            <Facebook className="h-3 w-3" /> Profile Link
+                                            <MessageCircle className="h-3 w-3" /> Profile Link
                                           </a>
                                         )}
                                       </div>
@@ -604,11 +773,21 @@ export default function Admin() {
                                   <TableCell>
                                     <div className="space-y-1">
                                       <p className="text-xs font-semibold truncate max-w-[120px]">{order.product_type}</p>
-                                      <div className="flex gap-1">
+                                      <div className="flex gap-1 flex-wrap items-center">
+                                        <Badge variant="secondary" className="text-[10px] px-1 h-5">{order.item_type || "Set"}</Badge>
                                         <Badge variant="outline" className="text-[10px] px-1 h-5">{order.size}</Badge>
                                         <Badge variant="outline" className="text-[10px] px-1 h-5 capitalize">{order.style}</Badge>
                                       </div>
+                                      <div className="flex items-center gap-1 mt-1 opacity-70">
+                                        <Tag className="h-2 w-2 text-primary" />
+                                        <span className="text-[8px] uppercase font-bold text-primary tracking-tighter">
+                                          {getPriceDetails(order.product_type, order.item_type || "Set", order.size).category}
+                                        </span>
+                                      </div>
                                     </div>
+                                  </TableCell>
+                                  <TableCell className="font-mono text-xs font-bold text-primary">
+                                    ₱{(order.price || calculatePrice(order.product_type, order.item_type || "Set", order.size)).toLocaleString()}
                                   </TableCell>
                                   <TableCell>
                                     <Badge className={`${statusConfig?.color || "bg-gray-500"} text-white border-none text-[11px]`}>
@@ -645,6 +824,11 @@ export default function Admin() {
                   </CardContent>
                 </Card>
               </motion.div>
+            ) : activeTab === "new_order" ? (
+              <OrderPage onSuccess={() => {
+                fetchOrders();
+                setActiveTab("orders");
+              }} />
             ) : activeTab === "confirmations" ? (
               <motion.div
                 key="confirmations"
@@ -671,7 +855,7 @@ export default function Admin() {
                       </Button>
                     )}
                     <Badge variant="secondary" className="px-3 py-1 text-sm font-bold">
-                      {pendingBatches.length} Teams Waiting
+                      {pendingBatches.length} Customers Waiting
                     </Badge>
                   </div>
                 </div>
@@ -680,26 +864,26 @@ export default function Admin() {
                   <div className="flex flex-col items-center justify-center py-20 bg-background rounded-xl border border-dashed">
                     <CheckCircle2 className="h-12 w-12 text-success opacity-20 mb-4" />
                     <p className="text-lg font-medium">All caught up!</p>
-                    <p className="text-sm text-muted-foreground">No new batches needing confirmation.</p>
+                    <p className="text-sm text-muted-foreground">No new customers needing confirmation.</p>
                   </div>
                 ) : (
                   <div className="grid gap-4">
                     {pendingBatches.map((batch) => (
-                      <Card key={batch.teamName} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                      <Card key={batch.customerName} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex flex-col md:flex-row items-stretch">
                           {/* Left Strip - Design */}
                           <div className="w-full md:w-32 bg-muted/30 flex items-center justify-center p-4 border-r">
-                            {batch.customer?.design_url ? (
-                              <a href={batch.customer.design_url} target="_blank" rel="noopener noreferrer">
+                            {batch.designSignedUrl ? (
+                              <a href={batch.designSignedUrl} target="_blank" rel="noopener noreferrer">
                                 <img 
-                                  src={batch.customer.design_url} 
+                                  src={batch.designSignedUrl} 
                                   className="h-20 w-20 object-cover rounded-lg border shadow-sm"
                                   alt="Design"
                                 />
                               </a>
                             ) : (
-                              <div className="h-20 w-20 rounded-lg border-2 border-dashed flex items-center justify-center text-xs text-muted-foreground bg-white">
-                                No Design
+                              <div className="h-20 w-20 rounded-lg border-2 border-dashed flex items-center justify-center text-xs text-muted-foreground bg-white text-center px-1">
+                                {batch.customer?.design_url ? "Loading..." : "No Design"}
                               </div>
                             )}
                           </div>
@@ -707,9 +891,12 @@ export default function Admin() {
                           <div className="flex-1 p-6 flex flex-col md:flex-row gap-6">
                             <div className="flex-1 space-y-2">
                               <div className="flex items-center gap-3">
-                                <h4 className="text-xl font-bold">{batch.teamName}</h4>
+                                <h4 className="text-xl font-bold">{batch.customerName}</h4>
                                 <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-none">
                                   {batch.pendingCount} Pending Items
+                                </Badge>
+                                <Badge variant="outline" className={`border-none ${batch.totalPaid >= batch.totalBill && batch.totalBill > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {batch.totalPaid >= batch.totalBill && batch.totalBill > 0 ? 'Fully Paid' : `Paid: ₱${batch.totalPaid.toLocaleString()} / ₱${batch.totalBill.toLocaleString()}`}
                                 </Badge>
                                 {batch.customer?.reseller && (
                                   <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/20">
@@ -725,7 +912,7 @@ export default function Admin() {
                                 )}
                                 {batch.customer?.fb_link && (
                                   <span className="flex items-center gap-1.5">
-                                    <Facebook className="h-4 w-4" /> Profile Attached
+                                    <MessageCircle className="h-4 w-4" /> Profile Attached
                                   </span>
                                 )}
                                 <span className="flex items-center gap-1.5">
@@ -760,7 +947,7 @@ export default function Admin() {
                                 variant="outline" 
                                 className="w-full"
                                 onClick={() => {
-                                  setTeamFilter(batch.teamName);
+                                  setCustomerFilter(batch.customerName);
                                   setActiveTab("orders");
                                 }}
                               >
@@ -774,24 +961,350 @@ export default function Admin() {
                   </div>
                 )}
               </motion.div>
-            ) : (
+            ) : activeTab === "customers" ? (
+              <motion.div
+                key="customers"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-6"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-2xl font-bold text-primary">Customer Registry</h3>
+                    <p className="text-muted-foreground">Manage all registered customers and resellers.</p>
+                  </div>
+                  <Button onClick={fetchCustomers} variant="outline" size="sm">
+                    <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+                  </Button>
+                </div>
+
+                <div className="rounded-lg border bg-card overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Customer Name</TableHead>
+                        <TableHead>Reseller</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Orders</TableHead>
+                        <TableHead>Joined</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {customers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                            No customers found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        customers.map((customer) => {
+                          const orderCount = orders.filter(o => o.customers?.team_name === customer.team_name).length;
+                          return (
+                            <TableRow key={customer.id}>
+                              <TableCell className="font-bold">{customer.team_name}</TableCell>
+                              <TableCell>
+                                {customer.reseller ? (
+                                  <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/20">
+                                    {customer.reseller.email.split('@')[0]}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">Direct Customer</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-sm">
+                                  {customer.contact_phone && <div>{customer.contact_phone}</div>}
+                                  {customer.fb_link && (
+                                    <a href={customer.fb_link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                                      <MessageCircle className="h-3 w-3" /> Profile
+                                    </a>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{orderCount} items</Badge>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-sm">
+                                {new Date(customer.created_at).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button variant="ghost" size="sm" onClick={() => {
+                                  setCustomerFilter(customer.team_name);
+                                  setActiveTab("orders");
+                                }}>
+                                  View Orders
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </motion.div>
+            ) : activeTab === "transactions" ? (
               <motion.div
                 key="transactions"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="flex flex-col items-center justify-center h-[60vh] text-center"
+                className="space-y-6"
               >
-                <div className="p-6 rounded-full bg-muted mb-4">
-                  <Receipt className="h-12 w-12 text-muted-foreground" />
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-2xl font-bold text-primary uppercase tracking-tighter">Transaction History</h3>
+                    <p className="text-muted-foreground">Monitor and verify deposit slips from resellers.</p>
+                  </div>
+                  <Button onClick={fetchTransactions} variant="outline" size="sm">
+                    <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+                  </Button>
                 </div>
-                <h3 className="text-xl font-bold">Transaction History</h3>
-                <p className="text-muted-foreground max-w-sm mt-2">
-                  This feature is coming soon. You'll be able to see payment records and deposit slips here.
-                </p>
-                <Button className="mt-6" onClick={() => setActiveTab("orders")}>
-                  Return to Dashboard
-                </Button>
+
+                <div className="rounded-lg border bg-card overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Reseller</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Method</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Proof</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {transactions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                            No transactions found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        transactions.map((tx) => (
+                          <TableRow key={tx.id}>
+                            <TableCell className="font-bold">{tx.customer?.team_name}</TableCell>
+                            <TableCell>
+                              <span className="text-xs text-muted-foreground">
+                                {tx.customer?.reseller?.email?.split('@')[0] || "Direct"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="font-mono text-primary font-bold">
+                              ₱{Number.parseFloat(tx.amount).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-sm">{tx.payment_method}</TableCell>
+                            <TableCell>
+                              <Badge className={
+                                tx.status === 'verified' ? 'bg-green-500 text-white border-none' : 
+                                tx.status === 'rejected' ? 'bg-destructive text-white border-none' :
+                                'bg-amber-500 text-white border-none'
+                              }>
+                                {tx.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {tx.proof_url ? (
+                                <a href={tx._proofSignedUrl || tx.proof_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1">
+                                  <Download className="h-3 w-3" /> View Slip
+                                </a>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">No Proof</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-xs">
+                              {new Date(tx.created_at).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {tx.status === 'pending' && (
+                                <div className="flex gap-2 justify-end">
+                                  <Button size="sm" variant="outline" className="h-7 text-[10px] text-green-600 border-green-200 hover:bg-green-50" onClick={() => verifyTransaction(tx.id, 'verified')}>
+                                    Verify
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-7 text-[10px] text-destructive border-red-200 hover:bg-red-50" onClick={() => verifyTransaction(tx.id, 'rejected')}>
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
+                              {tx.status !== 'pending' && (
+                                <span className="text-[10px] text-muted-foreground">Processed</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </motion.div>
+            ) : activeTab === "inventory" ? (
+              <motion.div
+                key="inventory"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-6"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-2xl font-bold text-primary uppercase tracking-tighter">Jersey Style Catalog</h3>
+                    <p className="text-muted-foreground">Manage fabric types and available styles.</p>
+                  </div>
+                  <Dialog open={isStyleDialogOpen} onOpenChange={setIsStyleDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="bg-primary shadow-lg">
+                        <Plus className="mr-2 h-4 w-4" /> Add New Style
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add New Jersey Style</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label>Style Name</Label>
+                          <Input 
+                            placeholder="e.g. Pro-Fit Mesh" 
+                            value={newStyle.name}
+                            onChange={(e) => setNewStyle({...newStyle, name: e.target.value})}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Description</Label>
+                          <Input 
+                            placeholder="Briefly describe the fabric/style" 
+                            value={newStyle.description}
+                            onChange={(e) => setNewStyle({...newStyle, description: e.target.value})}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Image URL</Label>
+                          <Input 
+                            placeholder="https://..." 
+                            value={newStyle.image_url}
+                            onChange={(e) => setNewStyle({...newStyle, image_url: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsStyleDialogOpen(false)}>Cancel</Button>
+                        <Button onClick={addStyle}>Create Style</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <AlertDialog open={!!styleToDelete} onOpenChange={(open) => !open && setStyleToDelete(null)}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently remove this style from the catalog. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                          onClick={() => styleToDelete && deleteStyle(styleToDelete)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Remove Style
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {styles.length === 0 ? (
+                    <div className="col-span-full py-20 text-center text-muted-foreground">
+                      No styles defined yet.
+                    </div>
+                  ) : (
+                    styles.map((style) => (
+                      <Card key={style.id} className="overflow-hidden border-none shadow-md bg-card/50 group">
+                        <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
+                          {style.image_url ? (
+                            <img src={style.image_url} alt={style.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                          ) : (
+                            <Layers className="h-12 w-12 text-muted-foreground/30" />
+                          )}
+                          <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button size="icon" variant="destructive" className="h-8 w-8" onClick={() => setStyleToDelete(style.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <CardHeader>
+                          <CardTitle className="text-lg uppercase font-bold tracking-tight">{style.name}</CardTitle>
+                          <CardDescription>{style.description || "No description provided."}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex justify-between items-center bg-muted/20 py-3">
+                          <Badge variant="outline" className="bg-primary/5 text-primary">Active Catalog</Badge>
+                          <Button variant="ghost" size="sm" className="text-primary hover:text-primary hover:bg-primary/10">
+                            <Edit className="h-3 w-3 mr-1" /> Edit
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="settings"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="space-y-6"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card className="border-none shadow-md">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 uppercase tracking-tighter">
+                        <Users className="h-5 w-5 text-primary" /> Admin Profile
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">Logged in via</span>
+                        <span className="font-medium truncate ml-2 text-right">{user?.email}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">Access Level</span>
+                        <Badge className="bg-primary hover:bg-primary uppercase tracking-widest text-[10px]">Administrator</Badge>
+                      </div>
+                      <Button variant="outline" className="w-full mt-4 h-11 border-primary/20 hover:bg-primary/5 text-primary" onClick={handleLogout}>
+                        <LogOut className="mr-2 h-4 w-4" /> Sign Out from Dashboard
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-none shadow-md">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 uppercase tracking-tighter">
+                        <Settings className="h-5 w-5 text-primary" /> System Controls
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-dashed">
+                        <div>
+                          <p className="text-sm font-bold uppercase tracking-tight">Maintenance Mode</p>
+                          <p className="text-[11px] text-muted-foreground">Disable ordering for all users</p>
+                        </div>
+                        <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50">Inactive</Badge>
+                      </div>
+                      <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-dashed">
+                        <div>
+                          <p className="text-sm font-bold uppercase tracking-tight">Data Integrity</p>
+                          <p className="text-[11px] text-muted-foreground">Cloud sync status</p>
+                        </div>
+                        <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 uppercase text-[10px]">Healthy</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

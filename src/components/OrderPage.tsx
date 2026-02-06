@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { useNavigate } from "react-router-dom";
-import { Header } from "@/components/Header";
 import { CustomerInfo } from "@/components/CustomerInfo";
 import { OrderForm, type JerseyItem } from "@/components/OrderForm";
 import { BatchCart } from "@/components/BatchCart";
@@ -9,11 +7,23 @@ import { OrderConfirmation } from "@/components/OrderConfirmation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
+import { Link2, AlertCircle } from "lucide-react";
+import { Badge } from "./ui/badge";
 
-const Order = () => {
-  const navigate = useNavigate();
+interface OrderPageProps {
+  onSuccess?: () => void;
+  initialCustomerData?: {
+    id?: string;
+    team_name: string;
+    fb_link: string | null;
+    contact_phone: string | null;
+  };
+}
+
+export function OrderPage({ onSuccess, initialCustomerData }: OrderPageProps) {
   const { toast } = useToast();
   const [user, setUser] = useState<any>(null);
+  const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(initialCustomerData?.id);
   const [customerName, setCustomerName] = useState("");
   const [fbLink, setFbLink] = useState("");
   const [phone, setPhone] = useState("");
@@ -22,6 +32,25 @@ const Order = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [submittedCount, setSubmittedCount] = useState(0);
+
+  useEffect(() => {
+    if (initialCustomerData) {
+      setCurrentCustomerId(initialCustomerData.id);
+      setCustomerName(initialCustomerData.team_name || "");
+      setFbLink(initialCustomerData.fb_link || "");
+      setPhone(initialCustomerData.contact_phone || "");
+    }
+  }, [initialCustomerData]);
+
+  useEffect(() => {
+    // If not prefilled, we might want to clear local state if coming from a null state
+    if (!initialCustomerData) {
+      setCurrentCustomerId(undefined);
+      setCustomerName("");
+      setFbLink("");
+      setPhone("");
+    }
+  }, [initialCustomerData === null]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -48,6 +77,7 @@ const Order = () => {
     const newJersey: JerseyItem = {
       ...jersey,
       id: uuidv4(),
+      customerId: currentCustomerId,
       customerName: customerName.trim(),
       customerFb: fbLink.trim() || undefined,
       customerPhone: phone.trim() || undefined,
@@ -73,6 +103,7 @@ const Order = () => {
     const processedJerseys = newJerseys.map(jersey => ({
       ...jersey,
       id: uuidv4(),
+      customerId: currentCustomerId,
       customerName: customerName.trim(),
       customerFb: fbLink.trim() || undefined,
       customerPhone: phone.trim() || undefined,
@@ -112,9 +143,7 @@ const Order = () => {
     setIsSubmitting(true);
 
     try {
-      // Group items by unique customer details
-      const customerBatches = new Map<string, { 
-        name: string, 
+      const customerBatches = new Map<string, {         id?: string;        name: string, 
         fb: string, 
         phone: string, 
         design: File | null,
@@ -122,9 +151,10 @@ const Order = () => {
       }>();
 
       jerseys.forEach((j) => {
-        const key = `${j.customerName}-${j.customerFb}-${j.customerPhone}`;
+        const key = j.customerId || `${j.customerName}-${j.customerFb}-${j.customerPhone}`;
         if (!customerBatches.has(key)) {
           customerBatches.set(key, {
+            id: j.customerId,
             name: j.customerName,
             fb: j.customerFb || "",
             phone: j.customerPhone || "",
@@ -135,11 +165,9 @@ const Order = () => {
         customerBatches.get(key)!.items.push(j);
       });
 
-      // Submit each batch
       for (const [_, customerData] of Array.from(customerBatches)) {
         let designUrl = null;
 
-        // Upload design if exists
         if (customerData.design) {
           const fileExt = customerData.design.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExt}`;
@@ -152,32 +180,57 @@ const Order = () => {
           designUrl = fileName;
         }
 
-        // Create or find customer (for simplicity we create a new entry per batch)
-        const { data: customer, error: customerError } = await supabase
-          .from("customers")
-          .insert({
-            team_name: customerData.name,
-            fb_link: customerData.fb,
-            contact_phone: customerData.phone,
-            design_url: designUrl,
-            reseller_id: user?.id || null,
-          })
-          .select()
-          .single();
+        let customerId = customerData.id;
 
-        if (customerError) throw customerError;
+        // If we don't have an ID, try to find an existing customer with this name for this reseller
+        if (!customerId) {
+          const { data: existing } = await supabase
+            .from("customers")
+            .select("id")
+            .eq("team_name", customerData.name)
+            .eq("reseller_id", user?.id)
+            .limit(1)
+            .maybeSingle();
+          
+          if (existing) {
+            customerId = existing.id;
+          }
+        }
 
-        // Create orders for this specific customer
+        if (!customerId) {
+          const { data: customer, error: customerError } = await supabase
+            .from("customers")
+            .insert({
+              team_name: customerData.name,
+              fb_link: customerData.fb,
+              contact_phone: customerData.phone,
+              design_url: designUrl,
+              reseller_id: user?.id || null,
+            })
+            .select()
+            .single();
+
+          if (customerError) throw customerError;
+          customerId = customer.id;
+        } else if (designUrl) {
+          // If customer exists but we uploaded a new design, update it
+          await supabase
+            .from("customers")
+            .update({ design_url: designUrl })
+            .eq("id", customerId);
+        }
+
         const orders = customerData.items.map((item) => ({
-          customer_id: customer.id,
+          customer_id: customerId,
           player_name_front: item.playerNameFront,
           player_name_back: item.playerNameBack || "",
           jersey_number: item.jerseyNumber,
           size: item.size,
           style: item.style,
           product_type: item.product,
-          status: "pending" as const,
+          item_type: item.itemType,
           price: item.price,
+          status: "pending" as const,
         }));
 
         const { error: ordersError } = await supabase.from("orders").insert(orders);
@@ -186,6 +239,7 @@ const Order = () => {
 
       setSubmittedCount(jerseys.length);
       setShowConfirmation(true);
+      if (onSuccess) onSuccess();
     } catch (error) {
       console.error("Order submission error:", error);
       toast({
@@ -199,6 +253,7 @@ const Order = () => {
   };
 
   const handleClearCustomer = () => {
+    setCurrentCustomerId(undefined);
     setCustomerName("");
     setFbLink("");
     setPhone("");
@@ -210,6 +265,7 @@ const Order = () => {
   };
 
   const handleNewOrder = () => {
+    setCurrentCustomerId(undefined);
     setCustomerName("");
     setFbLink("");
     setPhone("");
@@ -230,82 +286,76 @@ const Order = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      
-      {/* Hero Section */}
-      <section className="relative overflow-hidden border-b bg-gradient-to-b from-primary/5 to-background py-12 lg:py-16">
-        <div className="container px-4 sm:px-6">
+    <div className="space-y-8">
+      {currentCustomerId && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-primary/5 border border-primary/10 p-4 rounded-xl flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Link2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-bold uppercase tracking-tight">Adding to Existing Profile</p>
+              <p className="text-xs text-muted-foreground">Orders will be automatically linked to <span className="text-primary font-bold">{customerName}</span></p>
+            </div>
+          </div>
+          <Badge variant="outline" className="bg-primary/10 text-primary border-none text-[10px] uppercase font-bold px-3 py-1">
+            Linked Mode
+          </Badge>
+        </motion.div>
+      )}
+
+      <div className="grid gap-8 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center max-w-2xl mx-auto"
+            transition={{ delay: 0.1 }}
           >
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl mb-4">
-              Drips Printing <span className="text-gradient">Orders</span>
-            </h1>
-            <p className="text-lg text-muted-foreground">
-              Custom apparel and personalized jersey solutions.
-            </p>
+            <CustomerInfo
+              customerName={customerName}
+              fbLink={fbLink}
+              phone={phone}
+              designFile={designFile}
+              onCustomerNameChange={setCustomerName}
+              onFbLinkChange={setFbLink}
+              onPhoneChange={setPhone}
+              onDesignFileChange={setDesignFile}
+              onClear={handleClearCustomer}
+            />
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <OrderForm 
+              onAddJersey={handleAddJersey} 
+              onAddJerseys={handleAddJerseys}
+            />
           </motion.div>
         </div>
-      </section>
 
-      {/* Main Content */}
-      <main className="container px-4 sm:px-6 py-8 lg:py-12">
-        <div className="grid gap-8 lg:grid-cols-3">
-          {/* Left Column - Forms */}
-          <div className="lg:col-span-2 space-y-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-            >
-              <CustomerInfo
-                customerName={customerName}
-                fbLink={fbLink}
-                phone={phone}
-                designFile={designFile}
-                onCustomerNameChange={setCustomerName}
-                onFbLinkChange={setFbLink}
-                onPhoneChange={setPhone}
-                onDesignFileChange={setDesignFile}
-                onClear={handleClearCustomer}
-              />
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              <OrderForm 
-                onAddJersey={handleAddJersey} 
-                onAddJerseys={handleAddJerseys}
-              />
-            </motion.div>
-          </div>
-
-          {/* Right Column - Cart */}
-          <div className="lg:col-span-1">
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 }}
-              className="sticky top-24"
-            >
-              <BatchCart 
-                items={jerseys} 
-                onRemoveItem={handleRemoveJersey}
-                onSubmit={handleSubmitOrder}
-                isSubmitting={isSubmitting}
-              />
-            </motion.div>
-          </div>
+        <div className="lg:col-span-1">
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.3 }}
+            className="sticky top-24"
+          >
+            <BatchCart 
+              items={jerseys} 
+              onRemoveItem={handleRemoveJersey}
+              onSubmit={handleSubmitOrder}
+              isSubmitting={isSubmitting}
+            />
+          </motion.div>
         </div>
-      </main>
+      </div>
     </div>
   );
-};
-
-export default Order;
+}

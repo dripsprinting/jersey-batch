@@ -27,6 +27,12 @@ export default function Auth() {
   const [activeTab, setActiveTab] = useState("login");
 
   const redirectBasedOnRole = async (userId: string) => {
+    // If we explicitly came from the admin portal link, prioritize that route
+    if (targetRole === "admin") {
+      navigate("/admin");
+      return;
+    }
+
     const { data: roleData } = await supabase
       .from("user_roles")
       .select("role")
@@ -84,7 +90,10 @@ export default function Auth() {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/admin`,
+            emailRedirectTo: `${window.location.origin}/${targetRole === 'admin' ? 'admin' : 'reseller'}`,
+            data: {
+              requested_role: targetRole || 'reseller'
+            }
           },
         });
         if (error) throw error;
@@ -133,7 +142,7 @@ export default function Auth() {
           </h1>
           <p className="text-muted-foreground">
             {targetRole === "admin" 
-              ? "Sign in to manage team orders and production" 
+              ? "Sign in to manage orders and production" 
               : "Login or register to submit orders"}
           </p>
         </div>

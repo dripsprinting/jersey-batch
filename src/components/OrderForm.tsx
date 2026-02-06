@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Plus, User, Hash, Box, ListPlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { calculatePrice } from "@/lib/pricing";
 
 export interface JerseyItem {
   id: string;
@@ -17,6 +19,9 @@ export interface JerseyItem {
   size: string;
   style: string;
   product: string;
+  itemType: "Set" | "Upper" | "Lower";
+  price: number;
+  customerId?: string;
   customerName: string;
   customerFb?: string;
   customerPhone?: string;
@@ -28,7 +33,29 @@ interface OrderFormProps {
   onAddJerseys?: (jerseys: Omit<JerseyItem, "id" | "customerName" | "customerFb" | "customerPhone">[]) => void;
 }
 
-const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+const SIZE_GROUPS = [
+  {
+    label: "Junior Jerseys (4-6)",
+    sizes: ["4", "6"]
+  },
+  {
+    label: "Junior Jerseys (8-20)",
+    sizes: ["8", "10", "12", "14", "16", "18", "20"]
+  },
+  {
+    label: "Adult Standard",
+    sizes: ["2XS", "XS", "S", "M", "L", "XL"]
+  },
+  {
+    label: "Adult Plus Size (2XL-4XL)",
+    sizes: ["2XL", "3XL", "4XL"]
+  },
+  {
+    label: "Adult Plus Size (5XL-7XL)",
+    sizes: ["5XL", "6XL", "7XL"]
+  }
+];
+
 const FABRICS = ["Aircool", "Polydex", "Quiana", "Cotton", "Other"];
 const PRODUCTS = [
   "Basketball Jersey",
@@ -39,6 +66,7 @@ const PRODUCTS = [
   "Hoodie",
   "Longsleeves",
   "Polo Shirt",
+  "Pants",
 ];
 
 export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
@@ -49,12 +77,15 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
   const [style, setStyle] = useState("Polydex");
   const [customStyle, setCustomStyle] = useState("");
   const [product, setProduct] = useState("Basketball Jersey");
+  const [itemType, setItemType] = useState<"Set" | "Upper" | "Lower">("Set");
   const [bulkText, setBulkText] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!playerNameBack.trim() || !jerseyNumber.trim()) return;
     if (style === "Other" && !customStyle.trim()) return;
+
+    const itemPrice = calculatePrice(product, itemType, size);
 
     onAddJersey({
       playerNameFront: playerNameFront.trim(),
@@ -63,6 +94,8 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
       size,
       style: style === "Other" ? customStyle.trim() : style,
       product,
+      itemType,
+      price: itemPrice,
     });
 
     // Reset form
@@ -96,6 +129,8 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
         const lineSize = match[3] ? match[3].trim().toUpperCase() : size;
 
         if (name && number) {
+          const itemPrice = calculatePrice(product, itemType, lineSize);
+          
           newItems.push({
             playerNameFront: "",
             playerNameBack: name,
@@ -103,6 +138,8 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
             size: lineSize,
             style: style === "Other" ? customStyle.trim() : style,
             product,
+            itemType,
+            price: itemPrice,
           });
         }
       }
@@ -164,6 +201,20 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
                   </Select>
                 </div>
 
+                <div className="space-y-2">
+                  <Label>Coverage / Type</Label>
+                  <Select value={itemType} onValueChange={(v) => setItemType(v as any)}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Select coverage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Set">Full Set</SelectItem>
+                      <SelectItem value="Upper">Upper Only</SelectItem>
+                      <SelectItem value="Lower">Lower Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="playerNameFront" className="flex items-center gap-2">
@@ -219,10 +270,15 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {SIZES.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
+                        {SIZE_GROUPS.map((group) => (
+                          <SelectGroup key={group.label}>
+                            <SelectLabel>{group.label}</SelectLabel>
+                            {group.sizes.map((s) => (
+                              <SelectItem key={s} value={s}>
+                                {s}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
                         ))}
                       </SelectContent>
                     </Select>
@@ -285,7 +341,7 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Common Settings</Label>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <Select value={style} onValueChange={setStyle}>
                       <SelectTrigger className="h-11">
                         <SelectValue placeholder="Fabric / Style" />
@@ -308,6 +364,16 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
                             {p}
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={itemType} onValueChange={(v) => setItemType(v as any)}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Coverage" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Set">Full Set</SelectItem>
+                        <SelectItem value="Upper">Upper Only</SelectItem>
+                        <SelectItem value="Lower">Lower Only</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

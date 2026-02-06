@@ -29,28 +29,20 @@ const Index = () => {
             <h1 className="text-5xl font-extrabold tracking-tight sm:text-7xl mb-6 bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
               Drips Printing
             </h1>
-            <p className="text-xl text-muted-foreground italic mb-12 max-w-xl mx-auto">
-              The professional choice for custom apparel and premium team wear solutions.
+            <p className="text-xl text-muted-foreground mb-12 max-w-xl mx-auto">
+              The professional choice for custom apparel and premium customer solutions.
             </p>
             
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 }}
-              className="flex flex-col sm:flex-row justify-center gap-6"
+              className="flex justify-center"
             >
-              <button 
-                onClick={() => navigate("/order")}
-                className="group flex items-center justify-center gap-4 px-10 py-5 rounded-full bg-primary text-primary-foreground font-bold shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 active:scale-95 text-xl"
-              >
-                <span className="text-lg">Place an Order</span>
-                <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <div className="flex gap-4 justify-center">
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button 
                   onClick={() => navigate("/auth?type=reseller")}
-                  className="flex items-center gap-2 px-6 py-4 rounded-full bg-white border-2 border-primary/20 text-primary font-bold hover:bg-primary/5 transition-all active:scale-95"
+                  className="flex items-center gap-2 px-8 py-4 rounded-full bg-white border-2 border-primary/20 text-primary font-bold hover:bg-primary/5 transition-all active:scale-95 shadow-sm"
                 >
                   <UserCircle className="h-5 w-5" />
                   <span>Reseller Portal</span>
@@ -58,7 +50,7 @@ const Index = () => {
 
                 <button 
                   onClick={() => navigate("/auth?type=admin")}
-                  className="flex items-center gap-2 px-6 py-4 rounded-full bg-muted/50 text-muted-foreground font-bold hover:bg-muted transition-all active:scale-95"
+                  className="flex items-center gap-2 px-8 py-4 rounded-full bg-muted/50 text-muted-foreground font-bold hover:bg-muted transition-all active:scale-95"
                 >
                   <ShieldCheck className="h-5 w-5" />
                   <span>Admin</span>

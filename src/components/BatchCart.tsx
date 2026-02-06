@@ -1,9 +1,10 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Trash2, ShoppingBag, Send, User } from "lucide-react";
+import { Trash2, ShoppingBag, Send, User, Tag } from "lucide-react";
 import type { JerseyItem } from "./OrderForm";
 import { useMemo } from "react";
+import { getPriceDetails } from "@/lib/pricing";
 
 interface BatchCartProps {
   items: JerseyItem[];
@@ -23,6 +24,10 @@ export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: Batch
     return groups;
   }, [items]);
 
+  const total = useMemo(() => {
+    return items.reduce((sum, item) => sum + (item.price || 0), 0);
+  }, [items]);
+
   return (
     <Card className="glass-card sticky top-4">
       <CardHeader>
@@ -36,6 +41,12 @@ export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: Batch
               {items.length} {items.length === 1 ? "item" : "items"} in batch
             </CardDescription>
           </div>
+          {total > 0 && (
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground uppercase font-bold">Total Bill</p>
+              <p className="text-xl font-bold text-primary">₱{total.toLocaleString()}</p>
+            </div>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -51,8 +62,8 @@ export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: Batch
               {Object.entries(groupedItems).map(([customerKey, customerItems]) => (
                 <div key={customerKey} className="space-y-3">
                   <div className="flex items-center gap-2 px-1 text-sm font-bold text-primary border-b pb-1">
-                    <User className="h-3 w-3" />
-                    {customerItems[0].customerName}
+                    <User className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{customerItems[0].customerName}</span>
                   </div>
                   {customerItems.map((item, index) => (
                     <motion.div
@@ -73,17 +84,26 @@ export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: Batch
                           )}
                         </p>
                         <p className="text-xs text-muted-foreground line-clamp-1">
-                          {item.product} • #{item.jerseyNumber} • {item.size} • {item.style}
+                          {item.product} • {item.itemType} • #{item.jerseyNumber} • {item.size} • {item.style}
                         </p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Tag className="h-2 w-2 text-primary" />
+                          <span className="text-[9px] uppercase font-bold text-primary/70 tracking-tighter">
+                            {getPriceDetails(item.product, item.itemType, item.size).category}
+                          </span>
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onRemoveItem(item.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="text-right flex items-center gap-3">
+                        <p className="text-sm font-bold text-primary">₱{(item.price || 0).toLocaleString()}</p>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onRemoveItem(item.id)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </motion.div>
                   ))}
                 </div>

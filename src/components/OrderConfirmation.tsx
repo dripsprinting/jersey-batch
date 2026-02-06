@@ -5,11 +5,11 @@ import { CheckCircle2, ArrowRight } from "lucide-react";
 
 interface OrderConfirmationProps {
   orderCount: number;
-  teamName: string;
+  customerName: string;
   onNewOrder: () => void;
 }
 
-export function OrderConfirmation({ orderCount, teamName, onNewOrder }: OrderConfirmationProps) {
+export function OrderConfirmation({ orderCount, customerName, onNewOrder }: OrderConfirmationProps) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -34,7 +34,7 @@ export function OrderConfirmation({ orderCount, teamName, onNewOrder }: OrderCon
             <p className="text-muted-foreground mb-6">
               Successfully submitted <span className="font-semibold text-foreground">{orderCount}</span>{" "}
               {orderCount === 1 ? "jersey" : "jerseys"} for{" "}
-              <span className="font-semibold text-foreground">{teamName}</span>
+              <span className="font-semibold text-foreground">{customerName}</span>
             </p>
             <p className="text-sm text-muted-foreground mb-8">
               Your order is now pending review. Our team will begin production shortly.
