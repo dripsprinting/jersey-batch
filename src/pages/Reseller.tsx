@@ -255,7 +255,19 @@ export default function Reseller() {
       const { data: stylesData } = await supabase.from("styles").select("*").order("name");
       setStyles(stylesData || []);
       const { data: customersData } = await supabase.from("customers").select("*, due_date").eq("reseller_id", sessionUser.id).order("team_name");
-      setCustomers(customersData || []);
+      
+      const customersWithUrls = await Promise.all((customersData || []).map(async (c) => {
+        if (!c.design_url) return c;
+        try {
+          const filePath = extractFilePath(c.design_url);
+          const { data } = await supabase.storage.from("designs").createSignedUrl(filePath, 3600);
+          return { ...c, _designSignedUrl: data?.signedUrl };
+        } catch {
+          return c;
+        }
+      }));
+      setCustomers(customersWithUrls);
+      
       const { data: txData } = await supabase
         .from("transactions")
         .select("*, customer:customers(team_name)")
