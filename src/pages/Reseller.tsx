@@ -150,9 +150,11 @@ export default function Reseller() {
       {/* Sidebar */}
       <aside className="w-64 border-r bg-background flex flex-col hidden md:flex">
         <div className="p-6 flex items-center gap-3 border-b">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <Package className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <img 
+            src="/favicon.png" 
+            alt="Logo" 
+            className="h-8 w-8 rounded-lg object-cover bg-white"
+          />
           <span className="font-bold text-lg tracking-tight">Reseller Portal</span>
         </div>
         

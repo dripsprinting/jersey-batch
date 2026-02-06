@@ -18,6 +18,14 @@ const Index = () => {
             animate={{ opacity: 1, y: 0 }}
             className="text-center max-w-3xl mx-auto"
           >
+            <motion.img
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.5 }}
+              src="/favicon.png"
+              alt="Drips Printing Logo"
+              className="h-24 w-24 mx-auto mb-8 rounded-full shadow-2xl border-4 border-white object-cover bg-white p-1"
+            />
             <h1 className="text-5xl font-extrabold tracking-tight sm:text-7xl mb-6 bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
               Drips Printing
             </h1>

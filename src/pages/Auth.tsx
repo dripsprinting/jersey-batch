@@ -123,6 +123,11 @@ export default function Auth() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
+          <img 
+            src="/favicon.png" 
+            alt="Drips Printing Logo" 
+            className="h-20 w-20 mx-auto mb-6 rounded-full shadow-lg border-2 border-white object-cover bg-white p-0.5"
+          />
           <h1 className="text-2xl font-bold">
             {targetRole === "admin" ? "Admin Access" : "Reseller Portal"}
           </h1>
