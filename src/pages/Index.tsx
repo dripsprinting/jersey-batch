@@ -158,6 +158,7 @@ const Index = () => {
         // Create orders for this specific customer
         const orders = customerData.items.map((item) => ({
           customer_id: customer.id,
+          player_name: item.playerNameBack,
           player_name_front: item.playerNameFront,
           player_name_back: item.playerNameBack,
           jersey_number: item.jerseyNumber,

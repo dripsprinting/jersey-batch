@@ -24,8 +24,8 @@ export interface JerseyItem {
 }
 
 interface OrderFormProps {
-  onAddJersey: (jersey: Omit<JerseyItem, "id">) => void;
-  onAddJerseys?: (jerseys: Omit<JerseyItem, "id">[]) => void;
+  onAddJersey: (jersey: Omit<JerseyItem, "id" | "customerName" | "customerFb" | "customerPhone">) => void;
+  onAddJerseys?: (jerseys: Omit<JerseyItem, "id" | "customerName" | "customerFb" | "customerPhone">[]) => void;
 }
 
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
@@ -41,7 +41,7 @@ const PRODUCTS = [
   "Polo Shirt",
 ];
 
-export function OrderForm({ onAddJersey }: OrderFormProps) {
+export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
   const [playerNameFront, setPlayerNameFront] = useState("");
   const [playerNameBack, setPlayerNameBack] = useState("");
   const [jerseyNumber, setJerseyNumber] = useState("");
@@ -78,7 +78,7 @@ export function OrderForm({ onAddJersey }: OrderFormProps) {
     if (!bulkText.trim()) return;
 
     const lines = bulkText.split("\n");
-    const newItems: Omit<JerseyItem, "id">[] = [];
+    const newItems: Omit<JerseyItem, "id" | "customerName" | "customerFb" | "customerPhone">[] = [];
 
     lines.forEach((line) => {
       const trimmedLine = line.trim();
@@ -103,7 +103,6 @@ export function OrderForm({ onAddJersey }: OrderFormProps) {
             size: lineSize,
             style: style === "Other" ? customStyle.trim() : style,
             product,
-            customerName: "",
           });
         }
       }

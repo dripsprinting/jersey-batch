@@ -19,6 +19,8 @@ export type Database = {
           contact_email: string | null
           contact_phone: string | null
           created_at: string
+          design_url: string | null
+          fb_link: string | null
           id: string
           team_name: string
         }
@@ -26,6 +28,8 @@ export type Database = {
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
+          design_url?: string | null
+          fb_link?: string | null
           id?: string
           team_name: string
         }
@@ -33,6 +37,8 @@ export type Database = {
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
+          design_url?: string | null
+          fb_link?: string | null
           id?: string
           team_name?: string
         }
@@ -45,9 +51,12 @@ export type Database = {
           id: string
           jersey_number: string
           player_name: string
+          player_name_back: string | null
+          player_name_front: string | null
+          product_type: string
           size: Database["public"]["Enums"]["jersey_size"]
           status: Database["public"]["Enums"]["order_status"]
-          style: Database["public"]["Enums"]["jersey_style"]
+          style: string
           updated_at: string
         }
         Insert: {
@@ -56,9 +65,12 @@ export type Database = {
           id?: string
           jersey_number: string
           player_name: string
+          player_name_back?: string | null
+          player_name_front?: string | null
+          product_type?: string
           size?: Database["public"]["Enums"]["jersey_size"]
           status?: Database["public"]["Enums"]["order_status"]
-          style?: Database["public"]["Enums"]["jersey_style"]
+          style?: string
           updated_at?: string
         }
         Update: {
@@ -67,9 +79,12 @@ export type Database = {
           id?: string
           jersey_number?: string
           player_name?: string
+          player_name_back?: string | null
+          player_name_front?: string | null
+          product_type?: string
           size?: Database["public"]["Enums"]["jersey_size"]
           status?: Database["public"]["Enums"]["order_status"]
-          style?: Database["public"]["Enums"]["jersey_style"]
+          style?: string
           updated_at?: string
         }
         Relationships: [
@@ -82,14 +97,39 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
+      app_role: "admin" | "user"
       jersey_size: "XS" | "S" | "M" | "L" | "XL" | "XXL" | "XXXL"
       jersey_style: "home" | "away"
       order_status: "pending" | "in_production" | "shipped" | "completed"
@@ -220,6 +260,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["admin", "user"],
       jersey_size: ["XS", "S", "M", "L", "XL", "XXL", "XXXL"],
       jersey_style: ["home", "away"],
       order_status: ["pending", "in_production", "shipped", "completed"],
