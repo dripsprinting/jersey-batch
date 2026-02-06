@@ -219,7 +219,7 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
                   <div className="space-y-2">
                     <Label htmlFor="playerNameFront" className="flex items-center gap-2">
                       <User className="h-4 w-4 text-muted-foreground" />
-                      Name (Front)
+                      First Name (Front)
                     </Label>
                     <Input
                       id="playerNameFront"
@@ -234,7 +234,7 @@ export function OrderForm({ onAddJersey, onAddJerseys }: OrderFormProps) {
                   <div className="space-y-2">
                     <Label htmlFor="playerNameBack" className="flex items-center gap-2">
                       <User className="h-4 w-4 text-muted-foreground" />
-                      Name (Back)
+                      Last Name (Back)
                     </Label>
                     <Input
                       id="playerNameBack"

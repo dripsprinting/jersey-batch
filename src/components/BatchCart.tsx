@@ -75,14 +75,22 @@ export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: Batch
                       className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 group"
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold truncate">
-                          {item.playerNameBack}
-                          {item.playerNameFront && (
-                            <span className="text-muted-foreground font-normal ml-1">
-                              ({item.playerNameFront})
+                        <div className="text-sm">
+                          {item.playerNameFront ? (
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              <span className="font-bold text-primary flex items-center gap-1">
+                                <span className="text-[9px] uppercase text-muted-foreground opacity-70 font-bold whitespace-nowrap">Front:</span> {item.playerNameFront}
+                              </span>
+                              <span className="font-semibold text-foreground flex items-center gap-1">
+                                <span className="text-[9px] uppercase text-muted-foreground opacity-70 font-bold whitespace-nowrap">Back:</span> {item.playerNameBack}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="font-bold text-primary flex items-center gap-1">
+                              <span className="text-[9px] uppercase text-muted-foreground opacity-70 font-bold whitespace-nowrap">Back:</span> {item.playerNameBack}
                             </span>
                           )}
-                        </p>
+                        </div>
                         <p className="text-xs text-muted-foreground line-clamp-1">
                           {item.product} • {item.itemType} • #{item.jerseyNumber} • {item.size} • {item.style}
                         </p>

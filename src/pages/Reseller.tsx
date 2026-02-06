@@ -610,7 +610,17 @@ export default function Reseller() {
                               return (
                                 <TableRow key={order.id}>
                                   <TableCell className="font-bold">{order.customers?.team_name}</TableCell>
-                                  <TableCell>{order.player_name_back} (#{order.jersey_number})</TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-col">
+                                      <span className="font-bold text-primary text-base leading-tight">{order.player_name_back}</span>
+                                      {order.player_name_front && (
+                                        <span className="text-[11px] font-medium text-muted-foreground bg-muted w-fit px-1.5 rounded mt-0.5">
+                                          Front: {order.player_name_front}
+                                        </span>
+                                      )}
+                                      <span className="text-xs mt-1 font-mono text-muted-foreground">#{order.jersey_number}</span>
+                                    </div>
+                                  </TableCell>
                                   <TableCell className="text-sm">
                                     <div className="flex flex-col">
                                       <span>{order.product_type}</span>

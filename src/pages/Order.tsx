@@ -56,7 +56,7 @@ const Order = () => {
     setJerseys((prev) => [...prev, newJersey]);
     toast({
       title: "Item Added",
-      description: `${jersey.product} for ${jersey.playerNameBack} added to batch`,
+      description: `${jersey.product} for ${jersey.playerNameFront || jersey.playerNameBack} added to batch`,
     });
   };
 
