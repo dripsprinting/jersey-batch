@@ -98,7 +98,7 @@ export default function Admin() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setOrders((data as OrderWithCustomer[]) || []);
+      setOrders((data as unknown as OrderWithCustomer[]) || []);
     } catch (error) {
       console.error("Error fetching orders:", error);
       toast({
