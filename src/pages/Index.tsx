@@ -8,27 +8,66 @@ import { OrderConfirmation } from "@/components/OrderConfirmation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
-import { Shirt } from "lucide-react";
 
 const Index = () => {
   const { toast } = useToast();
   const [teamName, setTeamName] = useState("");
-  const [email, setEmail] = useState("");
+  const [fbLink, setFbLink] = useState("");
   const [phone, setPhone] = useState("");
+  const [designFile, setDesignFile] = useState<File | null>(null);
   const [jerseys, setJerseys] = useState<JerseyItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [submittedCount, setSubmittedCount] = useState(0);
 
-  const handleAddJersey = (jersey: Omit<JerseyItem, "id">) => {
+  const handleAddJersey = (jersey: Omit<JerseyItem, "id" | "customerName" | "customerFb" | "customerPhone">) => {
+    if (!teamName.trim()) {
+      toast({
+        title: "Name Required",
+        description: "Please enter a team or customer name above first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const newJersey: JerseyItem = {
       ...jersey,
       id: uuidv4(),
+      customerName: teamName.trim(),
+      customerFb: fbLink.trim() || undefined,
+      customerPhone: phone.trim() || undefined,
+      customerDesign: designFile || undefined,
     };
     setJerseys((prev) => [...prev, newJersey]);
     toast({
-      title: "Jersey Added",
-      description: `${jersey.playerName} #${jersey.jerseyNumber} added to batch`,
+      title: "Item Added",
+      description: `${jersey.product} for ${jersey.playerNameBack} added to batch`,
+    });
+  };
+
+  const handleAddJerseys = (newJerseys: Omit<JerseyItem, "id" | "customerName" | "customerFb" | "customerPhone">[]) => {
+    if (!teamName.trim()) {
+      toast({
+        title: "Name Required",
+        description: "Please enter a team or customer name above first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const processedJerseys = newJerseys.map(jersey => ({
+      ...jersey,
+      id: uuidv4(),
+      customerName: teamName.trim(),
+      customerFb: fbLink.trim() || undefined,
+      customerPhone: phone.trim() || undefined,
+      customerDesign: designFile || undefined,
+    }));
+
+    setJerseys((prev) => [...prev, ...processedJerseys]);
+    toast({
+      title: "Bulk Add Complete",
+      description: `Successfully added ${newJerseys.length} items to batch`,
     });
   };
 
@@ -58,32 +97,79 @@ const Index = () => {
     setIsSubmitting(true);
 
     try {
-      // Create customer
-      const { data: customer, error: customerError } = await supabase
-        .from("customers")
-        .insert({
-          team_name: teamName.trim(),
-          contact_email: email.trim() || null,
-          contact_phone: phone.trim() || null,
-        })
-        .select()
-        .single();
+      // Group items by unique customer details
+      const customerMap = new Map<string, {
+        name: string,
+        fb: string | null,
+        phone: string | null,
+        design: File | null,
+        items: JerseyItem[]
+      }>();
 
-      if (customerError) throw customerError;
+      jerseys.forEach(item => {
+        const key = `${item.customerName}-${item.customerPhone || ""}`;
+        if (!customerMap.has(key)) {
+          customerMap.set(key, {
+            name: item.customerName,
+            fb: item.customerFb || null,
+            phone: item.customerPhone || null,
+            design: item.customerDesign || null,
+            items: []
+          });
+        }
+        customerMap.get(key)!.items.push(item);
+      });
 
-      // Create all orders
-      const orders = jerseys.map((jersey) => ({
-        customer_id: customer.id,
-        player_name: jersey.playerName,
-        jersey_number: jersey.jerseyNumber,
-        size: jersey.size as "XS" | "S" | "M" | "L" | "XL" | "XXL" | "XXXL",
-        style: jersey.style as "home" | "away",
-        status: "pending" as const,
-      }));
+      // Process each customer group
+      for (const [_, customerData] of customerMap) {
+        let designUrl = null;
 
-      const { error: ordersError } = await supabase.from("orders").insert(orders);
+        // Upload design if exists
+        if (customerData.design) {
+          const fileExt = customerData.design.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExt}`;
+          const { error: uploadError, data } = await supabase.storage
+            .from('designs')
+            .upload(fileName, customerData.design);
 
-      if (ordersError) throw ordersError;
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('designs')
+            .getPublicUrl(fileName);
+          
+          designUrl = publicUrl;
+        }
+
+        // Create or find customer (for simplicity we create a new entry per batch)
+        const { data: customer, error: customerError } = await supabase
+          .from("customers")
+          .insert({
+            team_name: customerData.name,
+            fb_link: customerData.fb,
+            contact_phone: customerData.phone,
+            design_url: designUrl,
+          })
+          .select()
+          .single();
+
+        if (customerError) throw customerError;
+
+        // Create orders for this specific customer
+        const orders = customerData.items.map((item) => ({
+          customer_id: customer.id,
+          player_name_front: item.playerNameFront,
+          player_name_back: item.playerNameBack,
+          jersey_number: item.jerseyNumber,
+          size: item.size as any,
+          style: item.style as any,
+          product_type: item.product,
+          status: "pending" as const,
+        }));
+
+        const { error: ordersError } = await supabase.from("orders").insert(orders);
+        if (ordersError) throw ordersError;
+      }
 
       setSubmittedCount(jerseys.length);
       setShowConfirmation(true);
@@ -99,10 +185,22 @@ const Index = () => {
     }
   };
 
+  const handleClearCustomer = () => {
+    setTeamName("");
+    setFbLink("");
+    setPhone("");
+    setDesignFile(null);
+    toast({
+      title: "Form Cleared",
+      description: "You can now enter details for another person",
+    });
+  };
+
   const handleNewOrder = () => {
     setTeamName("");
-    setEmail("");
+    setFbLink("");
     setPhone("");
+    setDesignFile(null);
     setJerseys([]);
     setShowConfirmation(false);
     setSubmittedCount(0);
@@ -120,15 +218,11 @@ const Index = () => {
             animate={{ opacity: 1, y: 0 }}
             className="text-center max-w-2xl mx-auto"
           >
-            <div className="inline-flex items-center justify-center p-2 mb-4 rounded-full bg-primary/10">
-              <Shirt className="h-6 w-6 text-primary" />
-            </div>
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl mb-4">
-              Bulk Jersey <span className="text-gradient">Orders</span>
+              Drips Printing <span className="text-gradient">Orders</span>
             </h1>
-            <p className="text-lg text-muted-foreground">
-              Create professional custom jerseys for your team. Add multiple players to a single order
-              and see live previews as you build your batch.
+            <p className="text-lg text-muted-foreground italic">
+              Custom apparel and team wear solutions.
             </p>
           </motion.div>
         </div>
@@ -146,11 +240,14 @@ const Index = () => {
             >
               <CustomerInfo
                 teamName={teamName}
-                email={email}
+                fbLink={fbLink}
                 phone={phone}
+                designFile={designFile}
                 onTeamNameChange={setTeamName}
-                onEmailChange={setEmail}
+                onFbLinkChange={setFbLink}
                 onPhoneChange={setPhone}
+                onDesignFileChange={setDesignFile}
+                onClear={handleClearCustomer}
               />
             </motion.div>
 
@@ -159,7 +256,10 @@ const Index = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
             >
-              <OrderForm onAddJersey={handleAddJersey} />
+              <OrderForm 
+                onAddJersey={handleAddJersey} 
+                onAddJerseys={handleAddJerseys}
+              />
             </motion.div>
           </div>
 

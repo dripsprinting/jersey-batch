@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Shirt, Mail, Lock, Loader2 } from "lucide-react";
+import { Mail, Lock, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { z } from "zod";
 
@@ -106,10 +106,7 @@ export default function Auth() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-primary mb-4">
-            <Shirt className="h-8 w-8 text-primary-foreground" />
-          </div>
-          <h1 className="text-2xl font-bold">JerseyPro Admin</h1>
+          <h1 className="text-2xl font-bold">Drips Printing Admin</h1>
           <p className="text-muted-foreground">Access the order management dashboard</p>
         </div>
 

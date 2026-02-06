@@ -19,6 +19,8 @@ export type Database = {
           contact_email: string | null
           contact_phone: string | null
           created_at: string
+          design_url: string | null
+          fb_link: string | null
           id: string
           team_name: string
         }
@@ -26,6 +28,8 @@ export type Database = {
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
+          design_url?: string | null
+          fb_link?: string | null
           id?: string
           team_name: string
         }
@@ -33,6 +37,8 @@ export type Database = {
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
+          design_url?: string | null
+          fb_link?: string | null
           id?: string
           team_name?: string
         }
@@ -44,10 +50,12 @@ export type Database = {
           customer_id: string
           id: string
           jersey_number: string
-          player_name: string
-          size: Database["public"]["Enums"]["jersey_size"]
+          player_name_back: string
+          player_name_front: string | null
+          product_type: string
+          size: string
           status: Database["public"]["Enums"]["order_status"]
-          style: Database["public"]["Enums"]["jersey_style"]
+          style: string
           updated_at: string
         }
         Insert: {
@@ -55,10 +63,12 @@ export type Database = {
           customer_id: string
           id?: string
           jersey_number: string
-          player_name: string
-          size?: Database["public"]["Enums"]["jersey_size"]
+          player_name_back: string
+          player_name_front?: string | null
+          product_type?: string
+          size?: string
           status?: Database["public"]["Enums"]["order_status"]
-          style?: Database["public"]["Enums"]["jersey_style"]
+          style?: string
           updated_at?: string
         }
         Update: {
@@ -66,10 +76,12 @@ export type Database = {
           customer_id?: string
           id?: string
           jersey_number?: string
-          player_name?: string
-          size?: Database["public"]["Enums"]["jersey_size"]
+          player_name_back?: string
+          player_name_front?: string | null
+          product_type?: string
+          size?: string
           status?: Database["public"]["Enums"]["order_status"]
-          style?: Database["public"]["Enums"]["jersey_style"]
+          style?: string
           updated_at?: string
         }
         Relationships: [

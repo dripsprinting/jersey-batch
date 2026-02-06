@@ -1,9 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { JerseyPreview } from "./JerseyPreview";
-import { Trash2, ShoppingBag, Send } from "lucide-react";
+import { Trash2, ShoppingBag, Send, User } from "lucide-react";
 import type { JerseyItem } from "./OrderForm";
+import { useMemo } from "react";
 
 interface BatchCartProps {
   items: JerseyItem[];
@@ -13,6 +13,16 @@ interface BatchCartProps {
 }
 
 export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: BatchCartProps) {
+  const groupedItems = useMemo(() => {
+    const groups: Record<string, JerseyItem[]> = {};
+    items.forEach((item) => {
+      const key = `${item.customerName}-${item.customerPhone || ""}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    });
+    return groups;
+  }, [items]);
+
   return (
     <Card className="glass-card sticky top-4">
       <CardHeader>
@@ -23,7 +33,7 @@ export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: Batch
               Current Batch
             </CardTitle>
             <CardDescription>
-              {items.length} {items.length === 1 ? "jersey" : "jerseys"} in batch
+              {items.length} {items.length === 1 ? "item" : "items"} in batch
             </CardDescription>
           </div>
         </div>
@@ -32,42 +42,51 @@ export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: Batch
         {items.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <ShoppingBag className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p>No jerseys added yet</p>
-            <p className="text-sm">Add player jerseys to build your batch</p>
+            <p>No items added yet</p>
+            <p className="text-sm">Add custom items to build your batch</p>
           </div>
         ) : (
-          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+          <div className="space-y-6 max-h-[500px] overflow-y-auto pr-2">
             <AnimatePresence mode="popLayout">
-              {items.map((item, index) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -100 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 group"
-                >
-                  <JerseyPreview
-                    playerName={item.playerName}
-                    jerseyNumber={item.jerseyNumber}
-                    style={item.style}
-                    size="sm"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate">{item.playerName}</p>
-                    <p className="text-sm text-muted-foreground">
-                      #{item.jerseyNumber} • {item.size} • {item.style}
-                    </p>
+              {Object.entries(groupedItems).map(([customerKey, customerItems]) => (
+                <div key={customerKey} className="space-y-3">
+                  <div className="flex items-center gap-2 px-1 text-sm font-bold text-primary border-b pb-1">
+                    <User className="h-3 w-3" />
+                    {customerItems[0].customerName}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onRemoveItem(item.id)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </motion.div>
+                  {customerItems.map((item, index) => (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: -100 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">
+                          {item.playerNameBack}
+                          {item.playerNameFront && (
+                            <span className="text-muted-foreground font-normal ml-1">
+                              ({item.playerNameFront})
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground line-clamp-1">
+                          {item.product} • #{item.jerseyNumber} • {item.size} • {item.style}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onRemoveItem(item.id)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </motion.div>
+                  ))}
+                </div>
               ))}
             </AnimatePresence>
           </div>
@@ -89,7 +108,7 @@ export function BatchCart({ items, onRemoveItem, onSubmit, isSubmitting }: Batch
             ) : (
               <>
                 <Send className="mr-2 h-5 w-5" />
-                Finalize & Submit Order
+                Finalize & Submit Batch
               </>
             )}
           </Button>

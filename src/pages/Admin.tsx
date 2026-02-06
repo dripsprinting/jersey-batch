@@ -11,22 +11,26 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Search, Download, LogOut, Filter, RefreshCw, 
-  Package, Clock, Truck, CheckCircle2 
+  Package, Clock, Truck, CheckCircle2, Phone, Facebook
 } from "lucide-react";
 import { motion } from "framer-motion";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface OrderWithCustomer {
   id: string;
-  player_name: string;
+  player_name_front: string | null;
+  player_name_back: string;
   jersey_number: string;
+  product_type: string;
   size: string;
   style: string;
   status: string;
   created_at: string;
   customers: {
     team_name: string;
-    contact_email: string | null;
+    fb_link: string | null;
+    contact_phone: string | null;
+    design_url: string | null;
   } | null;
 }
 
@@ -76,15 +80,19 @@ export default function Admin() {
         .from("orders")
         .select(`
           id,
-          player_name,
+          player_name_front,
+          player_name_back,
           jersey_number,
+          product_type,
           size,
           style,
           status,
           created_at,
           customers (
             team_name,
-            contact_email
+            fb_link,
+            contact_phone,
+            design_url
           )
         `)
         .order("created_at", { ascending: false });
@@ -113,7 +121,8 @@ export default function Admin() {
     return orders.filter((order) => {
       const matchesSearch =
         searchQuery === "" ||
-        order.player_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.player_name_back.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (order.player_name_front?.toLowerCase().includes(searchQuery.toLowerCase())) ||
         order.jersey_number.includes(searchQuery) ||
         order.customers?.team_name.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -153,10 +162,11 @@ export default function Admin() {
   };
 
   const exportToCSV = () => {
-    const headers = ["Team Name", "Player Name", "Number", "Size", "Style", "Status", "Date"];
+    const headers = ["Team Name", "Name (Front)", "Name (Back)", "Number", "Size", "Style", "Status", "Date"];
     const rows = filteredOrders.map((order) => [
       order.customers?.team_name || "",
-      order.player_name,
+      order.player_name_front || "",
+      order.player_name_back,
       order.jersey_number,
       order.size,
       order.style,
@@ -286,7 +296,10 @@ export default function Admin() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Team</TableHead>
+                    <TableHead>Contact Info</TableHead>
+                    <TableHead className="text-center">Design</TableHead>
                     <TableHead>Player</TableHead>
+                    <TableHead>Product</TableHead>
                     <TableHead className="text-center">Number</TableHead>
                     <TableHead className="text-center">Size</TableHead>
                     <TableHead className="text-center">Style</TableHead>
@@ -298,13 +311,13 @@ export default function Admin() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-12">
+                      <TableCell colSpan={10} className="text-center py-12">
                         <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                       </TableCell>
                     </TableRow>
                   ) : filteredOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                         No orders found
                       </TableCell>
                     </TableRow>
@@ -316,7 +329,51 @@ export default function Admin() {
                           <TableCell className="font-medium">
                             {order.customers?.team_name || "Unknown"}
                           </TableCell>
-                          <TableCell>{order.player_name}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col text-xs gap-1">
+                              {order.customers?.contact_phone && (
+                                <span className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3" /> {order.customers.contact_phone}
+                                </span>
+                              )}
+                              {order.customers?.fb_link && (
+                                <span className="flex items-center gap-1 text-primary">
+                                  <Facebook className="h-3 w-3" /> {order.customers.fb_link}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {order.customers?.design_url ? (
+                              <a 
+                                href={order.customers.design_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-block"
+                              >
+                                <div className="h-10 w-10 rounded overflow-hidden border bg-muted flex items-center justify-center hover:opacity-80 transition-opacity">
+                                  <img 
+                                    src={order.customers.design_url} 
+                                    alt="Design" 
+                                    className="h-full w-full object-cover"
+                                  />
+                                </div>
+                              </a>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No design</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-semibold">{order.player_name_back}</span>
+                              {order.player_name_front && (
+                                <span className="text-xs text-muted-foreground italic">
+                                  Front: {order.player_name_front}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm font-medium">{order.product_type}</TableCell>
                           <TableCell className="text-center font-mono font-bold">
                             {order.jersey_number}
                           </TableCell>
