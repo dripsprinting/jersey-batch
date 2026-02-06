@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       customers: {
@@ -53,11 +78,10 @@ export type Database = {
           customer_id: string
           id: string
           jersey_number: string
-          player_name: string
-          player_name_back: string | null
+          player_name_back: string
           player_name_front: string | null
           product_type: string
-          size: Database["public"]["Enums"]["jersey_size"]
+          size: string
           status: Database["public"]["Enums"]["order_status"]
           style: string
           updated_at: string
@@ -67,11 +91,10 @@ export type Database = {
           customer_id: string
           id?: string
           jersey_number: string
-          player_name: string
-          player_name_back?: string | null
+          player_name_back: string
           player_name_front?: string | null
           product_type?: string
-          size?: Database["public"]["Enums"]["jersey_size"]
+          size: string
           status?: Database["public"]["Enums"]["order_status"]
           style?: string
           updated_at?: string
@@ -81,11 +104,10 @@ export type Database = {
           customer_id?: string
           id?: string
           jersey_number?: string
-          player_name?: string
-          player_name_back?: string | null
+          player_name_back?: string
           player_name_front?: string | null
           product_type?: string
-          size?: Database["public"]["Enums"]["jersey_size"]
+          size?: string
           status?: Database["public"]["Enums"]["order_status"]
           style?: string
           updated_at?: string
@@ -105,16 +127,19 @@ export type Database = {
           created_at: string | null
           email: string | null
           id: string
+          role: string | null
         }
         Insert: {
           created_at?: string | null
           email?: string | null
           id: string
+          role?: string | null
         }
         Update: {
           created_at?: string | null
           email?: string | null
           id?: string
+          role?: string | null
         }
         Relationships: []
       }
@@ -151,8 +176,6 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
-      jersey_size: "XS" | "S" | "M" | "L" | "XL" | "XXL" | "XXXL"
-      jersey_style: "home" | "away"
       order_status: "pending" | "in_production" | "shipped" | "completed"
     }
     CompositeTypes: {
@@ -279,11 +302,12 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "user"],
-      jersey_size: ["XS", "S", "M", "L", "XL", "XXL", "XXXL"],
-      jersey_style: ["home", "away"],
       order_status: ["pending", "in_production", "shipped", "completed"],
     },
   },

@@ -5,7 +5,12 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center gap-2">
+        <Link to="/" className="flex items-center gap-3">
+          <img 
+            src="/favicon.png" 
+            alt="Drips Printing Logo" 
+            className="h-8 w-8 rounded-full shadow-sm object-cover bg-white p-0.5"
+          />
           <span className="text-xl font-bold">Drips Printing</span>
         </Link>
         <nav className="flex items-center gap-4">

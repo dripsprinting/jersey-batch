@@ -170,12 +170,11 @@ const Order = () => {
         // Create orders for this specific customer
         const orders = customerData.items.map((item) => ({
           customer_id: customer.id,
-          player_name: item.playerNameBack || item.playerNameFront || "",
           player_name_front: item.playerNameFront,
-          player_name_back: item.playerNameBack,
+          player_name_back: item.playerNameBack || "",
           jersey_number: item.jerseyNumber,
-          size: item.size as any,
-          style: item.style as any,
+          size: item.size,
+          style: item.style,
           product_type: item.product,
           status: "pending" as const,
         }));

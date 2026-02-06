@@ -7,7 +7,12 @@ ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS player_name_back text;
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS product_type text NOT NULL DEFAULT 'Basketball Jersey';
 
 -- Copy existing player_name data to player_name_back for any existing records
-UPDATE public.orders SET player_name_back = player_name WHERE player_name_back IS NULL;
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'orders' AND column_name = 'player_name') THEN
+        UPDATE public.orders SET player_name_back = player_name WHERE player_name_back IS NULL;
+    END IF;
+END $$;
 
 -- Make style a text column to support fabric types (Aircool, Polydex, etc.)
 ALTER TABLE public.orders ALTER COLUMN style TYPE text USING style::text;

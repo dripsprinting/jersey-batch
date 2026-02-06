@@ -1,73 +1,42 @@
-# Welcome to your Lovable project
+# Jersey Batch Order Management
 
-## Project info
+A streamlined application for managing custom jersey orders, customer info, and production status.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Tech Stack
+- **Frontend**: React + TypeScript + Vite
+- **UI**: Shadcn UI + Tailwind CSS
+- **Backend**: Supabase
+- **Icons**: Lucide React
+- **Animations**: Framer Motion
 
-## How can I edit this code?
+## Getting Started
 
-There are several ways of editing your application.
+### 1. Prerequisites
+- [Node.js](https://nodejs.org/) (Version 18 or higher)
+- [Supabase CLI](https://supabase.com/docs/guides/cli) (Optional, for local development)
 
-**Use Lovable**
+### 2. Installation
+```bash
+npm install
+```
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### 3. Setup Environment Variables
+Create a `.env` file in the root directory and add your Supabase credentials:
+```dotenv
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+```
 
-Changes made via Lovable will be committed automatically to this repo.
+### 4. Database Setup
+If you are setting up a new Supabase project, you can find the migrations in the `supabase/migrations` folder.
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+### 5. Running the App
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Features
+- **Public Order Form**: Allow customers/resellers to submit orders.
+- **Admin Dashboard**: Manage orders, track production, and view customer details.
+- **Reseller Portal**: Dedicated space for resellers to view their own history.
+- **Design Uploads**: Support for attaching design files to orders.

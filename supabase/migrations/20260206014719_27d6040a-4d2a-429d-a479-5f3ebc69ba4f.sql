@@ -18,16 +18,20 @@ END $$;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
 
 -- Drop old customers SELECT policy that only allowed admins
 DROP POLICY IF EXISTS "Admins can view customers" ON public.customers;
 
 -- Resellers can view their own customers, admins can view all
+DROP POLICY IF EXISTS "Resellers can view their own customers" ON public.customers;
 CREATE POLICY "Resellers can view their own customers"
 ON public.customers FOR SELECT
 TO authenticated
@@ -37,6 +41,7 @@ USING (reseller_id = auth.uid() OR public.has_role(auth.uid(), 'admin'));
 DROP POLICY IF EXISTS "Anyone can view orders" ON public.orders;
 
 -- Resellers can view orders for their customers, admins can view all
+DROP POLICY IF EXISTS "Resellers can view their own orders" ON public.orders;
 CREATE POLICY "Resellers can view their own orders"
 ON public.orders FOR SELECT
 TO authenticated
