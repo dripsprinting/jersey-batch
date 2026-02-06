@@ -97,6 +97,43 @@ export default function Admin() {
   const [newStyle, setNewStyle] = useState({ name: "", description: "", image_url: "" });
   const [isStyleDialogOpen, setIsStyleDialogOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState<string | null>(null);
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [tempAmount, setTempAmount] = useState<string>("");
+
+  const updateOrderPrice = async (orderId: string, newPrice: number) => {
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ price: newPrice })
+        .eq("id", orderId);
+
+      if (error) throw error;
+
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, price: newPrice } : o));
+      setEditingPriceId(null);
+      toast({ title: "Price updated" });
+    } catch (error: any) {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const updateTransactionAmount = async (txId: string, newAmount: number) => {
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ amount: newAmount })
+        .eq("id", txId);
+
+      if (error) throw error;
+
+      setTransactions(prev => prev.map(tx => tx.id === txId ? { ...tx, amount: newAmount } : tx));
+      setEditingTxId(null);
+      toast({ title: "Transaction amount updated" });
+    } catch (error: any) {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+    }
+  };
 
   const addStyle = async () => {
     if (!newStyle.name) return;
@@ -482,8 +519,14 @@ export default function Admin() {
 
   const stats = useMemo(() => {
     const totalRev = orders.reduce((acc, o) => acc + (o.price || calculatePrice(o.product_type, o.item_type || "Set", o.size)), 0);
-    const totalPaid = transactions
+    
+    // Transactions stats
+    const txVerified = transactions
       .filter(tx => tx.status === 'verified')
+      .reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
+    
+    const txPending = transactions
+      .filter(tx => tx.status === 'pending')
       .reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
 
     return {
@@ -492,7 +535,10 @@ export default function Admin() {
       inProduction: orders.filter((o) => o.status === "in_production").length,
       completed: orders.filter((o) => o.status === "completed").length,
       revenue: totalRev,
-      balance: totalRev - totalPaid
+      balance: totalRev - txVerified,
+      txVerified,
+      txPending,
+      txTotal: txVerified + txPending
     };
   }, [orders, transactions]);
 
@@ -593,7 +639,7 @@ export default function Admin() {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-                            <p className={`text-xl font-black mt-0.5 ${stat.color}`}>{stat.value}</p>
+                            <p className={`text-xl font-bold mt-0.5 ${stat.color}`}>{stat.value}</p>
                           </div>
                           <div className={`p-2 rounded-lg bg-muted ${stat.color}`}>
                             <stat.icon className="h-4 w-4" />
@@ -709,7 +755,7 @@ export default function Admin() {
                               const statusConfig = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
                               const designUrl = order._designSignedUrl;
                               return (
-                                <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
+                                <TableRow key={order.id} className="hover:bg-muted/30 transition-colors group">
                                   <TableCell>
                                     <div className="space-y-1">
                                       <p className="font-bold text-foreground truncate">{order.customers?.team_name || "Unknown Customer"}</p>
@@ -786,8 +832,37 @@ export default function Admin() {
                                       </div>
                                     </div>
                                   </TableCell>
-                                  <TableCell className="font-mono text-xs font-bold text-primary">
-                                    ₱{(order.price || calculatePrice(order.product_type, order.item_type || "Set", order.size)).toLocaleString()}
+                                  <TableCell className="font-mono text-xs text-primary">
+                                    {editingPriceId === order.id ? (
+                                      <div className="flex items-center gap-1">
+                                        <Input 
+                                          className="h-7 w-20 text-[10px] px-1" 
+                                          type="number" 
+                                          value={tempAmount}
+                                          onChange={(e) => setTempAmount(e.target.value)}
+                                          onBlur={() => {
+                                            if (tempAmount) updateOrderPrice(order.id, Number(tempAmount));
+                                            else setEditingPriceId(null);
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') updateOrderPrice(order.id, Number(tempAmount));
+                                            if (e.key === 'Escape') setEditingPriceId(null);
+                                          }}
+                                          autoFocus
+                                        />
+                                      </div>
+                                    ) : (
+                                      <span 
+                                        className="cursor-pointer hover:underline flex items-center gap-1"
+                                        onClick={() => {
+                                          setEditingPriceId(order.id);
+                                          setTempAmount((order.price || calculatePrice(order.product_type, order.item_type || "Set", order.size)).toString());
+                                        }}
+                                      >
+                                        ₱{(order.price || calculatePrice(order.product_type, order.item_type || "Set", order.size)).toLocaleString()}
+                                        <Edit className="h-2 w-2 opacity-0 group-hover:opacity-100" />
+                                      </span>
+                                    )}
                                   </TableCell>
                                   <TableCell>
                                     <Badge className={`${statusConfig?.color || "bg-gray-500"} text-white border-none text-[11px]`}>
@@ -1063,6 +1138,43 @@ export default function Admin() {
                   </Button>
                 </div>
 
+                {/* Transaction Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <Card className="bg-primary/5 border-none shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                        <BadgeDollarSign className="h-3 w-3" /> Total Reported
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-primary">₱{stats.txTotal.toLocaleString()}</div>
+                      <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-widest">Total Slips Submitted</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-green-500/5 border-none shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                        <CheckCircle2 className="h-3 w-3" /> Verified Balance
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-green-600">₱{stats.txVerified.toLocaleString()}</div>
+                      <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-widest">Success Transactions</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-amber-500/5 border-none shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                        <Clock className="h-3 w-3" /> For Verification
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-amber-600">₱{stats.txPending.toLocaleString()}</div>
+                      <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-widest">Pending Slips</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
                 <div className="rounded-lg border bg-card overflow-hidden">
                   <Table>
                     <TableHeader>
@@ -1086,15 +1198,44 @@ export default function Admin() {
                         </TableRow>
                       ) : (
                         transactions.map((tx) => (
-                          <TableRow key={tx.id}>
+                          <TableRow key={tx.id} className="group">
                             <TableCell className="font-bold">{tx.customer?.team_name}</TableCell>
                             <TableCell>
                               <span className="text-xs text-muted-foreground">
                                 {tx.customer?.reseller?.email?.split('@')[0] || "Direct"}
                               </span>
                             </TableCell>
-                            <TableCell className="font-mono text-primary font-bold">
-                              ₱{Number.parseFloat(tx.amount).toLocaleString()}
+                            <TableCell className="font-mono text-primary">
+                              {editingTxId === tx.id ? (
+                                <Input 
+                                  className="h-8 w-24 text-xs" 
+                                  type="number" 
+                                  value={tempAmount}
+                                  onChange={(e) => setTempAmount(e.target.value)}
+                                  onBlur={() => {
+                                    if (tempAmount) updateTransactionAmount(tx.id, Number(tempAmount));
+                                    else setEditingTxId(null);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') updateTransactionAmount(tx.id, Number(tempAmount));
+                                    if (e.key === 'Escape') setEditingTxId(null);
+                                  }}
+                                  autoFocus
+                                />
+                              ) : (
+                                <span 
+                                  className="cursor-pointer hover:underline flex items-center gap-1"
+                                  onClick={() => {
+                                    if (tx.status === 'pending') { // Only allow editing if pending to avoid confusion
+                                      setEditingTxId(tx.id);
+                                      setTempAmount(tx.amount.toString());
+                                    }
+                                  }}
+                                >
+                                  ₱{Number.parseFloat(tx.amount).toLocaleString()}
+                                  {tx.status === 'pending' && <Edit className="h-3 w-3 opacity-30" />}
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell className="text-sm">{tx.payment_method}</TableCell>
                             <TableCell>
