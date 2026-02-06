@@ -23,7 +23,6 @@ export type Database = {
           fb_link: string | null
           id: string
           team_name: string
-          reseller_id: string | null
         }
         Insert: {
           contact_email?: string | null
@@ -33,7 +32,6 @@ export type Database = {
           fb_link?: string | null
           id?: string
           team_name: string
-          reseller_id?: string | null
         }
         Update: {
           contact_email?: string | null
@@ -43,46 +41,8 @@ export type Database = {
           fb_link?: string | null
           id?: string
           team_name?: string
-          reseller_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "customers_reseller_id_fkey"
-            columns: ["reseller_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      profiles: {
-        Row: {
-          id: string
-          email: string | null
-          role: string | null
-          created_at: string
-        }
-        Insert: {
-          id: string
-          email?: string | null
-          role?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          email?: string | null
-          role?: string | null
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_id_fkey"
-            columns: ["id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       orders: {
         Row: {
