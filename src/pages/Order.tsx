@@ -175,6 +175,7 @@ const Order = () => {
         // Create orders for this specific customer
         const orders = customerData.items.map((item) => ({
           customer_id: customer.id,
+          player_name: item.playerNameBack || item.playerNameFront || "",
           player_name_front: item.playerNameFront,
           player_name_back: item.playerNameBack,
           jersey_number: item.jerseyNumber,
@@ -226,7 +227,8 @@ const Order = () => {
   if (showConfirmation) {
     return (
       <OrderConfirmation 
-        itemCount={submittedCount} 
+        orderCount={submittedCount} 
+        teamName={teamName || "Your Team"}
         onNewOrder={handleNewOrder} 
       />
     );

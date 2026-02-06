@@ -27,13 +27,14 @@ export default function Auth() {
   const [activeTab, setActiveTab] = useState("login");
 
   const redirectBasedOnRole = async (userId: string) => {
-    const { data: profile } = await supabase
-      .from("profiles")
+    const { data: roleData } = await supabase
+      .from("user_roles")
       .select("role")
-      .eq("id", userId)
-      .single();
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
 
-    if (profile?.role === "admin") {
+    if (roleData) {
       navigate("/admin");
     } else {
       navigate("/reseller");
