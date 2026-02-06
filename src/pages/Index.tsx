@@ -7,6 +7,8 @@ import { BatchCart } from "@/components/BatchCart";
 import { OrderConfirmation } from "@/components/OrderConfirmation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
+import { customerSchema } from "@/lib/validation";
 import { motion } from "framer-motion";
 
 const Index = () => {
@@ -94,6 +96,23 @@ const Index = () => {
       return;
     }
 
+    // Validate customer input before submission
+    const validation = customerSchema.safeParse({
+      teamName: teamName.trim(),
+      fbLink: fbLink.trim(),
+      phone: phone.trim(),
+    });
+
+    if (!validation.success) {
+      const firstError = validation.error.errors[0];
+      toast({
+        title: "Validation Error",
+        description: firstError.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -122,32 +141,29 @@ const Index = () => {
 
       // Process each customer group
       for (const [_, customerData] of customerMap) {
-        let designUrl = null;
+        let designUrl: string | null = null;
 
-        // Upload design if exists
+        // Upload design if exists - store file path only (not public URL)
         if (customerData.design) {
           const fileExt = customerData.design.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExt}`;
-          const { error: uploadError, data } = await supabase.storage
+          const { error: uploadError } = await supabase.storage
             .from('designs')
             .upload(fileName, customerData.design);
 
           if (uploadError) throw uploadError;
 
-          const { data: { publicUrl } } = supabase.storage
-            .from('designs')
-            .getPublicUrl(fileName);
-          
-          designUrl = publicUrl;
+          // Store just the file path - signed URLs are generated on-demand in Admin
+          designUrl = fileName;
         }
 
-        // Create or find customer (for simplicity we create a new entry per batch)
+        // Create customer record
         const { data: customer, error: customerError } = await supabase
           .from("customers")
           .insert({
             team_name: customerData.name,
-            fb_link: customerData.fb,
-            contact_phone: customerData.phone,
+            fb_link: customerData.fb || null,
+            contact_phone: customerData.phone || null,
             design_url: designUrl,
           })
           .select()
@@ -175,7 +191,7 @@ const Index = () => {
       setSubmittedCount(jerseys.length);
       setShowConfirmation(true);
     } catch (error) {
-      console.error("Order submission error:", error);
+      logger.error("Order submission error:", error);
       toast({
         title: "Submission Failed",
         description: "There was an error submitting your order. Please try again.",
