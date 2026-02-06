@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,22 +18,38 @@ const authSchema = z.object({
 
 export default function Auth() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const targetRole = searchParams.get("type");
   const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
 
+  const redirectBasedOnRole = async (userId: string) => {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .single();
+
+    if (profile?.role === "admin") {
+      navigate("/admin");
+    } else {
+      navigate("/reseller");
+    }
+  };
+
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        navigate("/admin");
+        redirectBasedOnRole(session.user.id);
       }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        navigate("/admin");
+        redirectBasedOnRole(session.user.id);
       }
     });
 
@@ -106,8 +122,14 @@ export default function Auth() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold">Drips Printing Admin</h1>
-          <p className="text-muted-foreground">Access the order management dashboard</p>
+          <h1 className="text-2xl font-bold">
+            {targetRole === "admin" ? "Admin Access" : "Reseller Portal"}
+          </h1>
+          <p className="text-muted-foreground">
+            {targetRole === "admin" 
+              ? "Sign in to manage team orders and production" 
+              : "Login or register to submit orders"}
+          </p>
         </div>
 
         <Card>
@@ -133,7 +155,7 @@ export default function Auth() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@example.com"
+                      placeholder="yourname@example.com"
                       className="h-11"
                       required
                     />
@@ -172,7 +194,7 @@ export default function Auth() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@example.com"
+                      placeholder="yourname@example.com"
                       className="h-11"
                       required
                     />

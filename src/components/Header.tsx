@@ -9,14 +9,14 @@ export function Header() {
           <span className="text-xl font-bold">Drips Printing</span>
         </Link>
         <nav className="flex items-center gap-4">
-          <Button asChild variant="ghost">
-            <Link to="/">Order</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/admin" className="flex items-center gap-2">
-              Admin
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="hidden sm:flex border-primary/20 text-primary hover:bg-primary/5">
+              <Link to="/reseller">Reseller</Link>
+            </Button>
+            <Button asChild variant="default" className="shadow-sm">
+              <Link to="/admin">Admin</Link>
+            </Button>
+          </div>
         </nav>
       </div>
     </header>
